@@ -419,7 +419,7 @@
     "summary": "Learn how DP-SGD's gradient clipping and noise addition disproportionately degrade accuracy for minority subgroups, so adding a privacy guarantee to a bias-mitigation pipeline is not free. Illustrative example from Bagdasaryan, Poursaeed and Shmatikov (NeurIPS 2019), plus a runnable DP-SGD noise-injection toy; this repo trains no DP model, so no frozen numbers are quoted.",
     "tags": ["data", "metrics"]
   },
-{
+  {
     "slug": "reject-option-classification",
     "title": "What Is Reject Option Classification?",
     "subtitle": "Flip the model's least-confident predictions toward the group history treated worst.",
@@ -429,10 +429,8 @@
   {
     "slug": "algorithmic-recourse",
     "title": "Algorithmic Recourse",
-    "subtitle": "What you can actually change to flip a model's decision.",
-    "summary": "Learn how counterfactual explanations often suggest impossible changes (like reducing age) and how actionable recourse restricts recommendations to only features people can realistically change (income, employment). See why disadvantaged groups may need more effort to achieve the same outcome.",
-    "tags": ["explainability", "metrics", "detection", "healthcare"]
+    "subtitle": "A decision-changing path is only useful if a person can actually take it.",
+    "summary": "Learn how algorithmic recourse differs from a counterfactual explanation, how to constrain changes to actionable features, and how a reproducible hiring-audit example compares recourse costs across groups.",
+    "tags": ["explainability", "fairness", "case-study"]
   }
 ]
-
-

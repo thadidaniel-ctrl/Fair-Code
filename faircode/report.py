@@ -7,8 +7,8 @@ section banners, percentage formatting) so it feels native to the project.
 
 from __future__ import annotations
 
-import html
-import json
+import csv
+import io
 
 WIDTH = 62
 DISPLAY_GROUPS = 12  # cap rows shown per dimension; full data stays in the result
@@ -31,6 +31,128 @@ def to_json(result: dict, indent: int = 2, provenance: dict | None = None) -> st
     if provenance is None:
         return json.dumps(result, indent=indent)
     return json.dumps(dict(result, provenance=provenance), indent=indent)
+
+
+def to_json(result: dict, indent: int = 2, provenance: dict | None = None) -> str:
+    """Serialise a profile or compare result.
+    ... (existing docstring)
+    """
+    if provenance is None:
+        return json.dumps(result, indent=indent)
+    return json.dumps(dict(result, provenance=provenance), indent=indent)
+
+
+def to_csv(result: dict) -> str:
+    """Render a profile result as CSV.
+
+    Columns: dimension,kind,label,count,share,ci_low,ci_high,under_represented,small_group
+    Each row = one group within a dimension.  An additional section header
+    flags/metadata follows the group rows.
+    """
+    if not result.get("dimensions"):
+        return ""
+
+    rows: list[list[str]] = []
+    for d in result["dimensions"]:
+        for g in d["groups"]:
+            ci_low = g.get("ci_low")
+            ci_high = g.get("ci_high")
+            rows.append([
+                d["name"],                          # dimension
+                d["kind"],                          # kind
+                g.get("label", ""),                 # label
+                str(g.get("count", 0)),             # count
+                f"{g.get('share', 0):.4f}",        # share
+                f"{ci_low * 100:.1f}" if ci_low is not None else "",
+                f"{ci_high * 100:.1f}" if ci_high is not None else "",
+                str(g.get("label") in d.get("under_represented", [])).lower(),
+                str(g.get("small_group", False)).lower(),
+            ])
+
+    # header line
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(["dimension", "kind", "label", "count", "share", "ci_low", "ci_high",
+                     "under_represented", "small_group"])
+    for r in rows:
+        writer.writerow(r)
+
+    # --- metadata / flags section ---
+    meta: list[str] = []
+    if result.get("flags"):
+        meta.append("flags: " + "; ".join(result["flags"]))
+    if result.get("proxy_hints"):
+        meta.append("proxy_hints: " + ", ".join(
+            f"{h['a']}↔{h['b']}" for h in result["proxy_hints"]))
+    if d := result.get("reference"):
+        meta.append(f"reference_deviation {d['deviation'] * 100:.1f}%")
+
+    if meta:
+        out.write("\n# metadata\n")
+        for line in meta:
+            out.write(line + "\n")
+
+    return out.getvalue()
+
+
+def compare_to_csv(cmp: dict) -> str:
+    """Render a compare result as CSV.
+
+    Columns: dimension,comparison,label_A,count_A,share_A,ci_low_A,ci_high_A,
+             label_B,count_B,share_B,ci_low_B,ci_high_B,drift,psi
+    An additional metadata section follows.
+    """
+    if not cmp.get("dimensions"):
+        return ""
+
+    rows: list[list[str]] = []
+    for cd in cmp["dimensions"]:
+        for g in cd["groups"]:
+            rows.append([
+                cd["name"],                      # dimension
+                cd.get("kind", ""),              # kind
+                g.get("label", ""),              # label
+                str(g.get("count_a", 0)),        # count A
+                f"{g.get('share_a', 0):.4f}",   # share A
+                f"{g.get('ci_low_a', None) * 100:.1f}" if g.get("ci_low_a") else "",
+                f"{g.get('ci_high_a', None) * 100:.1f}" if g.get("ci_high_a") else "",
+                str(g.get("label", "")),         # label B
+                str(g.get("count_b", 0)),        # count B
+                f"{g.get('share_b', 0):.4f}",   # share B
+                f"{g.get('ci_low_b', None) * 100:.1f}" if g.get("ci_low_b") else "",
+                f"{g.get('ci_high_b', None) * 100:.1f}" if g.get("ci_high_b") else "",
+                str(g.get("share_delta", 0)),    # drift
+                f"{cd.get('psi', 0):.3f}" if cd.get("psi") else "",
+            ])
+
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(["dimension", "kind", "label", "count_A", "share_A", "ci_low_A", "ci_high_A",
+                     "label_B", "count_B", "share_B", "ci_low_B", "ci_high_B", "drift", "psi"])
+    for r in rows:
+        writer.writerow(r)
+
+    # --- metadata section ---
+    meta: list[str] = []
+    if cmp.get("flags"):
+        meta.append("flags: " + "; ".join(cmp["flags"]))
+    if cmp.get("proxy_hints_a"):
+        meta.append(f"proxy_hints_A: " + ", ".join(
+            f"{h['a']}↔{h['b']}" for h in cmp["proxy_hints_a"]))
+    if cmp.get("proxy_hints_b"):
+        meta.append(f"proxy_hints_B: " + ", ".join(
+            f"{h['a']}↔{h['b']}" for h in cmp["proxy_hints_b"]))
+    if cmp.get("added_dimensions"):
+        meta.append("added_dimensions: " + ", ".join(cmp["added_dimensions"]))
+    if cmp.get("removed_dimensions"):
+        meta.append("removed_dimensions: " + ", ".join(cmp["removed_dimensions"]))
+
+    if meta:
+        out.write("\n# metadata\n")
+        for line in meta:
+            out.write(line + "\n")
+
+    return out.getvalue()
 
 
 def _bar(share: float, width: int = 24) -> str:

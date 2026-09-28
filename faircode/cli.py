@@ -38,7 +38,7 @@ from .loaders_extra import get_xlsx_sheet_info, read_table
 from .profiler import _resolve_opts, parse_reference, profile
 from .provenance import build as build_provenance
 from .proxy import parse_held_out_specs, proxy_hints
-from .report import compare_to_terminal, to_html, compare_to_html, to_json, to_terminal
+from .report import compare_to_terminal, to_html, compare_to_html, to_json, to_terminal, to_csv
 
 _MAP_CHOICES = VALID_KINDS + ("ignore",)
 
@@ -141,6 +141,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--json", action="store_true", help="emit JSON to stdout")
     p.add_argument("--html", metavar="PATH",
                    help="write a standalone HTML report to PATH")
+    p.add_argument("--export-csv", metavar="PATH",
+               help="write a CSV report to PATH", dest="export_csv")
     p.add_argument("--fail-under", type=float, metavar="N",
                    help="exit 1 when the overall representation score is below N")
     p.add_argument("--map", action="append", metavar="COL=KIND",
@@ -180,6 +182,8 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--json", action="store_true", help="emit JSON to stdout")
     c.add_argument("--html", metavar="PATH",
                    help="write a standalone HTML report to PATH")
+    c.add_argument("--csv", metavar="PATH",
+                   help="write a CSV report to PATH")
     c.add_argument("--proxy-hints", action="store_true",
                    help="flag strongly-associated column pairs via chi-squared, "
                         "for both datasets separately (needs scipy)")
@@ -226,7 +230,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.proxy_hints_with and not args.proxy_hints:
             print("error: --proxy-hints-with needs --proxy-hints", file=sys.stderr)
             return 2
-        if args.csv == "-" and args.reference == "-":
+        if args.export_csv == "-" and args.reference == "-":
             print(
                 "error: profile input and --reference can't both read from stdin "
                 "(a stream can only be read once)",
@@ -239,7 +243,7 @@ def main(argv: list[str] | None = None) -> int:
                 spec.partition("=") for spec in args.proxy_hints_with or []
             )
         )
-        if args.csv == "-" and held_out_uses_stdin:
+        if args.export_csv == "-" and held_out_uses_stdin:
             print(
                 "error: profile input and --proxy-hints-with can't both read from stdin "
                 "(a stream can only be read once)",
@@ -247,9 +251,9 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 2
 
-        df = _read_or_exit(args.csv)
+        df = _read_or_exit(args.export_csv)
 
-        sheet_info = get_xlsx_sheet_info(args.csv)
+        sheet_info = get_xlsx_sheet_info(args.export_csv)
         if sheet_info is not None:
             sheet_name, ignored_sheets = sheet_info
             if ignored_sheets:
@@ -314,11 +318,28 @@ def main(argv: list[str] | None = None) -> int:
         if args.json:
             provenance = None
             if not args.no_provenance:
-                digests = [("dataset_hash", args.csv)]
+                digests = [("dataset_hash", args.export_csv)]
                 if args.reference:
                     digests.append(("reference_hash", args.reference))
                 provenance = build_provenance(digests, _resolve_opts(opts), overrides)
             print(to_json(result, provenance=provenance))
+        if args.export_csv:
+            import os
+            csv_path = args.export_csv
+            if os.path.exists(csv_path):
+                print(
+                    f"warning: {csv_path} already exists, overwriting",
+                    file=sys.stderr,
+                )
+            csv_content = to_csv(result)
+            try:
+                with open(csv_path, "w", encoding="utf-8") as fh:
+                    fh.write(csv_content)
+            except OSError as exc:
+                print(f"error: could not write CSV report to {csv_path}: {exc}",
+                      file=sys.stderr)
+                return 2
+            print(f"CSV report written to {csv_path}", file=sys.stderr)
         else:
             print(to_terminal(result))
         if args.fail_under is not None and result["overall_score"] is None:
@@ -337,7 +358,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "compare":
-        if args.csv_a == "-" and args.csv_b == "-":
+        if args.export_csv_a == "-" and args.export_csv_b == "-":
             print("error: --compare can't read both datasets from stdin "
                   "(a stream can only be read once)", file=sys.stderr)
             return 2
@@ -349,11 +370,11 @@ def main(argv: list[str] | None = None) -> int:
             "missing_flag": args.missing_flag,
             "min_group_size": args.min_group_size,
         }
-        df_a = _read_or_exit(args.csv_a)
-        df_b = _read_or_exit(args.csv_b)
+        df_a = _read_or_exit(args.export_csv_a)
+        df_b = _read_or_exit(args.export_csv_b)
         _check_map_columns(overrides, set(df_a.columns) | set(df_b.columns))
 
-        for path in (args.csv_a, args.csv_b):
+        for path in (args.export_csv_a, args.export_csv_b):
             sheet_info = get_xlsx_sheet_info(path)
             if sheet_info is not None:
                 sheet_name, ignored_sheets = sheet_info
@@ -370,7 +391,7 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
-        result = compare(profile_a, profile_b, name_a=args.csv_a, name_b=args.csv_b)
+        result = compare(profile_a, profile_b, name_a=args.export_csv_a, name_b=args.export_csv_b)
 
         if args.proxy_hints:
             try:
@@ -394,9 +415,26 @@ def main(argv: list[str] | None = None) -> int:
             provenance = None
             if not args.no_provenance:
                 provenance = build_provenance(
-                    [("dataset_hash_a", args.csv_a), ("dataset_hash_b", args.csv_b)],
+                    [("dataset_hash_a", args.export_csv_a), ("dataset_hash_b", args.export_csv_b)],
                     _resolve_opts(opts), overrides)
             print(to_json(result, provenance=provenance))
+        if args.export_csv:
+            import os
+            csv_path = args.export_csv
+            if os.path.exists(csv_path):
+                print(
+                    f"warning: {csv_path} already exists, overwriting",
+                    file=sys.stderr,
+                )
+            csv_content = compare_to_csv(result)
+            try:
+                with open(csv_path, "w", encoding="utf-8") as fh:
+                    fh.write(csv_content)
+            except OSError as exc:
+                print(f"error: could not write CSV report to {csv_path}: {exc}",
+                      file=sys.stderr)
+                return 2
+            print(f"CSV report written to {csv_path}", file=sys.stderr)
         else:
             print(compare_to_terminal(result))
         if args.fail_on_drift and result["drift_detected"]:

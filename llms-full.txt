@@ -12691,243 +12691,248 @@ Two defendants with `p = 0.49` and `p = 0.51` get opposite treatment based on gr
 
 # Algorithmic Recourse
 URL: https://www.thefaircode.xyz/explainers/algorithmic-recourse.html
-Summary: Learn how counterfactual explanations often suggest impossible changes (like reducing age) and how actionable recourse restricts recommendations to only features people can realistically change (income, employment). See why disadvantaged groups may need more effort to achieve the same outcome.
+Summary: Learn how algorithmic recourse differs from a counterfactual explanation, how to constrain changes to actionable features, and how a reproducible hiring-audit example compares recourse costs across groups.
 
-> **Note:** This explainer is part of the ongoing Fair Code work. Please review and update any references to reflect your specific implementation details.
+> _A model can tell someone what to change. Recourse asks whether that change is possible for them, and whether other people face a harder path to the same decision._
 
 ## The One-Sentence Definition
 
-An **actionable recourse** is the smallest, most realistic change to a person's features that would flip the model's prediction, restricted to only the features that can actually be changed (e.g., income, employment) and only in feasible directions (e.g., increasing income but not decreasing age).
-
-## Not to Be Confused With Counterfactual Explanation
-
-A [counterfactual explanation](counterfactual-explanation.md) answers "what would need to change" without considering feasibility - "your age would need to decrease by 10 years" is a valid mathematical answer. Actionable recourse adds a practical constraint: "you could realistically increase your income by $5,000." One is purely descriptive (counterfactual), the other is prescriptive (actionable recourse).
+**Algorithmic recourse** is a feasible, actionable change to a person's circumstances or inputs that would change an unfavorable model decision into a favorable one.
 
 ## Why It Matters
 
-Counterfactual explanations often suggest changes that people cannot make - reducing age, changing race, or erasing criminal history. Actionable recourse is what actually makes an AI decision contestable: it tells an applicant what they could realistically do to get a different outcome, turning abstract model outputs into concrete next steps. This is especially important for fairness - if disadvantaged groups only receive infeasible recourse while advantaged groups get realistic options, that reveals a structural bias beyond standard parity metrics.
+A **counterfactual explanation** describes what input change would flip a prediction. Recourse adds the person's real constraints: can they make that change, in the time available, at a cost they can bear? A model might say that a rejected applicant would be hired with a higher test score. That is a description of the model's boundary; it is not yet a useful recommendation if the applicant cannot access preparation or a retest.
 
-## Core Concept: Constrained Minimal Change
+That distinction matters for fairness. Two people can receive the same rejection and the same nominal advice while facing very different costs to act on it. Comparing recourse across groups asks whether people have similarly reachable paths to a favorable outcome. This is different from [Demographic Parity](demographic-parity.md) or [Disparate Impact](disparate-impact.md), which compare group outcome rates, not the effort or feasibility of changing an individual decision. Unequal recourse can expose a burden that an outcome-rate metric does not measure, but it does not by itself prove why the burden differs or establish discrimination.
 
-Formally, actionable recourse finds the smallest change to input `x` (predicted class `y`) such that:
+## Core Concept: Constrained Search and Actionability
 
-1. The new input `x'` has the model predict class `y'` (different from `y`)
-2. Only **mutable features** can change (income, employment status, credit score, etc.)
-3. Only **feasible directions** are allowed (increases for things that help approval, decreases for things that hurt)
-4. Immutable features stay fixed (age, race, protected attributes, history)
+For a denied person, search for a changed input that the model accepts while keeping immutable features fixed. Among successful candidates, minimize a stated cost, such as the sum of each allowed change divided by that feature's observed training range. The search is constrained twice: only designated actionable features may change, and each feature may move only in an allowed direction and within a stated bound.
 
-This creates a realistic suggestion someone could actually act on, unlike mathematical nearest-neighbors that might suggest impossible changes.
+Mutability is a domain decision, not a property a model can discover. Depending on the decision, potentially mutable features might include income, employment tenure, a credit score over time, debt, requested loan amount, or address. Each has conditions: income depends on access to jobs, credit repair takes time and money, and moving may be impossible. Immutable examples include age, race, gender, birthplace, and completed past events or history. Past experience cannot be rewritten, although a person's accumulated years of experience can increase over time.
 
-## Concrete Example: Benefits Denial - Audit 05
+The example below uses a hiring audit. It permits only `Experience_Years` and `Technical_Test_Score` to increase, up to their maxima in the training split. Gender and age remain unchanged, as do all other fields. That direction rule is explicit, but it is only a simple actionability assumption: it does not claim that more experience or a higher test score can be obtained immediately or fairly.
 
-For an applicant denied benefits under the baseline model, here's what each group needs to flip their decision:
+Ustun, Spangher, and Liu's _Actionable Recourse in Linear Classification_ (ACM FAT\* 2019, now ACM FAccT) formalizes recourse for linear classifiers and presents integer-programming methods for finding actionable changes. The paper shows that standard modeling choices can materially affect recourse and motivates measuring it; it does not establish that this example's group difference is causal or generalizable.
 
-```
---- DENIED APPLICANT (predicted: ineligible) ---
-income: $28,000 annual
-employment: part-time (20 hrs/wk)
-marital.status: single
-national.origin: US-born
-sex: female
-age: 28
-race: white
+## Concrete Example: AI Fair Recruitment - Audit 02
 
---- ACTIONABLE RECOURSE FOR EACH GROUP ---
+This example uses the real `AI Fair Recruitment/AI_Fair_Recruitment_Dataset.csv` and reproduces the audit's `unfair.py` baseline: 121,190 complete rows, an 80/20 split with `random_state=42`, and a 100-tree `RandomForestClassifier` with `random_state=42`. The audit's four input fields become five model columns after one-hot encoding Gender: Gender, Age, Experience_Years, and Technical_Test_Score. The decision is the dataset's binary `Hiring_Decision`, predicted at the classifier's default threshold. The audit manifest identifies Female as the disadvantaged group and Male as the advantaged group; `Other` is not included in this two-group comparison.
 
-ADVANTAGED GROUP (White men): 
-  Required change: Increase income by $7,500
-  Effort: Find better-paying job or promotion
-  Realistic timeframe: 3-6 months
+The checked-in **current** aggregate benchmark at `results/results_fairness.csv` reports a baseline random-forest demographic-parity difference (Female minus Male) of **-4.77 percentage points**, with a 95% interval of **[-5.86, -3.69] points** and a permutation p-value displayed as `0.0000` (rounded). That is an outcome-rate result, not a recourse-cost result.
 
-DISADVANTAGED GROUP (Women): 
-  Required change: Increase income by $12,500
-  Effort: Need dual income or career change
-  Realistic timeframe: 6-12 months
+For the separate recourse calculation below, the code takes a reproducible random sample of 100 denied Female applicants and 100 denied Male applicants from the fixed test split. For each, it exhaustively tests integer increases in experience and test score, holding Gender, Age, and every other model column fixed. Cost is normalized L1 distance: the sum of each increase divided by that feature's training-set range. Candidates are checked in full against the same fitted baseline model.
 
-CONCLUSION: White applicants need 40% less income increase to flip their decision, revealing a structural bias in the model's treatment of demographic groups with different economic opportunities.
-```
+| Test-set group | Sampled denied applicants | Found a path within bounds | Median normalized cost | Median experience increase | Median test-score increase |
+| -------------- | ------------------------: | -------------------------: | ---------------------: | -------------------------: | -------------------------: |
+| Female         |                       100 |                    100/100 |                0.06672 |                    0 years |                   4 points |
+| Male           |                       100 |                     99/100 |                0.06061 |                    0 years |                   4 points |
 
-## Detection/Implementation Code
+In this sample, the Female median cost is about **10.1% higher** than the Male median among applicants with a successful search. This is a descriptive result for two seeded samples, not a significance-tested or population-wide fairness finding. One sampled Male applicant had no successful candidate within the allowed features and observed bounds. The similar median changes do not mean the underlying effort is equal: the normalized cost combines two dimensions and excludes time, money, access, and the effort of improving a test score.
 
-A minimal actionable-recourse search that only considers realistic, feasible changes:
+## Detection Code
+
+Run from the repository root with `python3` and the project's dependencies installed. The script fits the audited baseline and prints both groups' sample success rates and median costs. It raises an error for missing features, empty comparison groups, or unusable feature ranges; applicants with no found path are retained in the success-rate denominator and excluded only from the median successful cost.
 
 ```python
+from itertools import product
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
 
 
-def actionable_recourse(model, instance, actionable_features, 
-                        immutable_features, feature_ranges, 
-                        target_class=1, step=0.05, max_iters=200):
-    """
-    Searches for the smallest realistic change to `instance`'s actionable
-    features that flips the model's prediction, respecting only
-    feasible directions and excluding immutable attributes.
+def nearest_recourse(
+    model: RandomForestClassifier,
+    denied_row: pd.Series,
+    actionable_features: List[str],
+    upper_bounds: Dict[str, int],
+    feature_ranges: Dict[str, float],
+) -> Optional[Tuple[pd.Series, float]]:
+    """Find the minimum-cost successful candidate using increases only."""
+    missing = set(actionable_features) - set(denied_row.index)
+    if missing:
+        raise ValueError(f"Actionable features are missing from the row: {sorted(missing)}")
 
-    Parameters:
-        model: fitted classifier with .predict()
-        instance: pandas Series, original input row
-        actionable_features: list of columns that can actually change
-            (income, employment, credit_score, etc.)
-        immutable_features: list of columns that cannot change
-            (age, race, protected attributes, history)
-        feature_ranges: {column: (min, max)} for each actionable feature
-        target_class: desired predicted class
-        step: fraction of each feature's range to perturb per iteration
-        max_iters: number of candidate counterfactuals to try
+    for feature in actionable_features:
+        if feature not in upper_bounds or feature not in feature_ranges:
+            raise ValueError(f"Missing bound or range for {feature!r}")
+        if feature_ranges[feature] <= 0:
+            raise ValueError(f"Feature range must be positive for {feature!r}")
+        if denied_row[feature] > upper_bounds[feature]:
+            return None
 
-    Returns:
-        The closest successful actionable recourse found (Series), or
-        None if no feasible change flips the prediction.
-    """
-    rng = np.random.default_rng(42)
-    best = None
-    best_distance = float("inf")
-
-    for _ in range(max_iters):
-        candidate = instance.copy()
-        if pd.api.types.is_integer_dtype(candidate):
-            candidate = candidate.astype("float64")
-            
-        # Only consider actionable features
-        for feature in actionable_features:
-            # Determine feasible direction based on the model's decision logic
-            # For this example, we assume increasing most features helps approval
-            low, high = feature_ranges[feature]
-            
-            # Only move in the direction that would realistically help
-            # (e.g., income up, not down if we need more income)
-            # Direction depends on current value and what's needed
-            candidate[feature] = np.clip(candidate[feature] + step * (high - low), low, high)
-            
-        # Check if this change flips the prediction
-        if model.predict(pd.DataFrame([candidate]))[0] == target_class:
-            # Calculate distance only over actionable features
-            distance = sum(
-                abs(candidate[f] - instance[f]) / (feature_ranges[f][1] - feature_ranges[f][0])
-                for f in actionable_features
-            )
-            if distance < best_distance:
-                best, best_distance = candidate, distance
-
-    return best
-
-
-# Usage example - Benefits Denial audit:
-# Define which features are actionable vs immutable
-
-# Actionable features (what a person can change):
-# - income, employment, marital.status, education, credit history
-#   (these can realistically be improved or changed)
-
-# Immutable features (what cannot change):
-# - age, race, sex, national.origin (these are fixed characteristics)
-
-# Define realistic ranges for actionable features
-# (based on observed data in the audit)
-feature_ranges = {
-    "income": (0, 100000),
-    "employment_hours": (0, 80), 
-    "credit_score": (300, 850),
-    # ... other actionable features
-}
-
-# Example usage with a denied application
-# actionable_recourse = actionable_recourse(
-#     model, denied_applicant,
-#     actionable_features=["income", "employment_hours", "credit_score"],
-#     immutable_features=["age", "race", "sex"],
-#     feature_ranges=feature_ranges,
-#     target_class=0  # switch from ineligible to eligible
-# )
-
-if actionable_recourse is not None:
-    print("Actionable recourse found:", actionable_recourse[[
-        "income", "employment_hours", "credit_score"
-    ]])
-```
-
-## Real Implementation: Comparing Groups
-
-Here's how the actionable-recourse search compares different demographic groups:
-
-```python
-# Define which groups to compare
-comparison_groups = [
-    {"name": "White men", "is_female": 0, "is_minority": 0},
-    {"name": "Women", "is_female": 1, "is_minority": 0},
-    {"name": "Minority women", "is_female": 1, "is_minority": 1},
-]
-
-# Run actionable recourse search for each group
-results = {}
-for group in comparison_groups:
-    group_instance = create_applicant_instance(
-        income=30000, employment="part-time", age=25,
-        is_female=group["is_female"], is_minority=group["is_minority"]
+    value_grid = list(product(*(
+        range(int(denied_row[feature]), upper_bounds[feature] + 1)
+        for feature in actionable_features
+    )))
+    candidates = pd.DataFrame(
+        [denied_row.to_dict() for _ in value_grid], columns=denied_row.index
     )
-    recourse = actionable_recourse(
-        model, group_instance,
-        actionable_features=["income", "employment_hours"],
-        immutable_features=["age", "is_female", "is_minority"],
-        feature_ranges={"income": (0, 80000), "employment_hours": (0, 60)},
-        target_class=0  # from denied to approved
-    )
-    results[group["name"]] = {
-        "income_increase_needed": recourse["income"] - 30000 if recourse is not None else None,
-        "hours_increase_needed": recourse["employment_hours"] - 20 if recourse is not None else None,
-        "effort_level": "low" if recourse else "very_high"
+    for feature_index, feature in enumerate(actionable_features):
+        candidates[feature] = [values[feature_index] for values in value_grid]
+
+    costs = [
+        sum(
+            (values[index] - denied_row[feature]) / feature_ranges[feature]
+            for index, feature in enumerate(actionable_features)
+        )
+        for values in value_grid
+    ]
+    successful = np.flatnonzero(model.predict(candidates) == 1)
+    if not successful.size:
+        return None
+
+    best_index = min(successful, key=lambda index: costs[index])
+    return candidates.iloc[best_index].copy(), float(costs[best_index])
+
+
+def compare_group_recourse(
+    model: RandomForestClassifier,
+    test_features: pd.DataFrame,
+    group_labels: pd.Series,
+    training_features: pd.DataFrame,
+    actionable_features: List[str],
+    groups: List[str],
+    sample_size: int = 100,
+    random_state: int = 42,
+) -> pd.DataFrame:
+    """Measure constrained recourse for a seeded sample of denied cases."""
+    if sample_size <= 0:
+        raise ValueError("sample_size must be positive")
+    if not test_features.index.equals(group_labels.index):
+        raise ValueError("Group labels must be aligned with test_features")
+
+    upper_bounds = {
+        feature: int(training_features[feature].max())
+        for feature in actionable_features
     }
+    feature_ranges = {
+        feature: float(training_features[feature].max() - training_features[feature].min())
+        for feature in actionable_features
+    }
+    predictions = model.predict(test_features)
+    rng = np.random.default_rng(random_state)
+    records = []
 
-# Display results
-for group, outcome in results.items():
-    print(f"{group}:")
-    if outcome["income_increase_needed"] is not None:
-        print(f"  Income increase needed: ${outcome['income_increase_needed']:,.0f}")
-        print(f"  Effort level: {outcome['effort_level']}")
-    else:
-        print(f"  Cannot flip decision with current feature constraints")
+    for group in groups:
+        denied_ids = test_features.index[
+            (group_labels == group).to_numpy() & (predictions == 0)
+        ].to_numpy()
+        if not denied_ids.size:
+            raise ValueError(f"No denied test cases found for group {group!r}")
+        sampled_ids = rng.choice(
+            denied_ids, size=min(sample_size, len(denied_ids)), replace=False
+        )
+
+        for row_id in sampled_ids:
+            original = test_features.loc[row_id]
+            result = nearest_recourse(
+                model, original, actionable_features, upper_bounds, feature_ranges
+            )
+            if result is None:
+                records.append({"group": group, "found": False, "cost": np.nan,
+                                "experience_increase": np.nan,
+                                "score_increase": np.nan})
+                continue
+
+            changed, cost = result
+            records.append({
+                "group": group,
+                "found": True,
+                "cost": cost,
+                "experience_increase": (
+                    changed["Experience_Years"] - original["Experience_Years"]
+                ),
+                "score_increase": (
+                    changed["Technical_Test_Score"] - original["Technical_Test_Score"]
+                ),
+            })
+
+    return pd.DataFrame(records)
+
+
+def main() -> None:
+    """Fit the audit baseline and print sampled recourse by gender."""
+    dataset_path = (
+        Path.cwd() / "AI Fair Recruitment" / "AI_Fair_Recruitment_Dataset.csv"
+    )
+    if not dataset_path.is_file():
+        raise FileNotFoundError("Run this script from the Fair-Code repository root")
+
+    data = pd.read_csv(dataset_path)
+    required = [
+        "Hiring_Decision", "Gender", "Age",
+        "Experience_Years", "Technical_Test_Score",
+    ]
+    data = data.dropna(subset=required)
+    model_features = [
+        "Gender", "Age", "Experience_Years", "Technical_Test_Score"
+    ]
+    actionable_features = ["Experience_Years", "Technical_Test_Score"]
+    features = pd.get_dummies(data[model_features], drop_first=True)
+    labels = data["Hiring_Decision"]
+    train_x, test_x, _, _ = train_test_split(
+        features, labels, test_size=0.2, random_state=42
+    )
+
+    model = RandomForestClassifier(n_estimators=100, random_state=42)
+    model.fit(train_x, labels.loc[train_x.index])
+    groups = data.loc[test_x.index, "Gender"]
+    results = compare_group_recourse(
+        model=model,
+        test_features=test_x,
+        group_labels=groups,
+        training_features=train_x,
+        actionable_features=actionable_features,
+        groups=["Female", "Male"],
+        sample_size=100,
+        random_state=42,
+    )
+
+    for group, sample in results.groupby("group", sort=False):
+        successful = sample[sample["found"]]
+        median_cost = successful["cost"].median()
+        median_experience = successful["experience_increase"].median()
+        median_score = successful["score_increase"].median()
+        print(
+            f"{group}: {len(sample)} sampled; {len(successful)} found; "
+            f"median cost={median_cost:.5f}; "
+            f"median experience increase={median_experience:.0f}; "
+            f"median score increase={median_score:.0f}"
+        )
+
+
+if __name__ == "__main__":
+    main()
 ```
 
 ## Limitations
 
-### 1. Actionability Constraints Are Value Judgments
+### Actionability is a value judgment
 
-Defining what is "actionable" and "feasible" requires making judgments about what socioeconomic changes are realistic. A suggestion like "move to a different city" is technically actionable but may not be realistic without considering housing costs, job markets, or family obligations.
+Developers, domain experts, policy-makers, and affected communities should decide which changes count as actionable and what time and cost bounds are acceptable. The code's one-way increases and training-set maxima are modeling choices, not facts about what an applicant can do.
 
-### 2. The Nearest Actionable Recourse May Not Be the Most Useful
+### A direction constraint is not a real-world plan
 
-Different search algorithms can return different valid actionable recourses. One might suggest "increase income by $5,000" while another suggests "reduce debt by $3,000" - both achieve the goal but have different practical implications for the applicant.
+More employment experience takes time and depends on job access. A higher test score may require money, preparation, accommodations, or another chance to take the test. Credit repair, increased income, and relocation have similar constraints. A mathematically valid path can still be economically infeasible or unavailable to a particular group.
 
-### 3. It Explains One Decision, Not Systemic Fairness
+### The audit cannot measure all barriers
 
-Like counterfactual explanations, actionable recourse is local to a single prediction. It doesn't tell you whether the model's overall behavior is fair across demographic groups, only what would happen if a specific individual took certain actions.
+The hiring dataset does not measure access to training, local job availability, discrimination in hiring, caregiving responsibilities, disability accommodations, or the cost of improving a score. The two-group sample also does not report intersectional results, and its random sample is not a causal or population-wide estimate.
 
-### 4. The Suggested Change Can Still Indirectly Discriminate
+### Recourse does not fix the decision system
 
-If all suggested actionable recourses for one group are consistently more difficult or expensive than those for another group, that reveals a deeper structural bias beyond standard parity metrics.
+An applicant should not have to overcome a discriminatory threshold to receive fair treatment. Recourse does not guarantee fairness, validate the model's target, or replace aggregate audits and systemic changes to hiring access and practice. A useful recourse process needs review, transparency, and a way to challenge the decision itself.
 
 ## Related Concepts
 
-* [Counterfactual Explanation](counterfactual-explanation.md) - the unconstrained version that includes unrealistic changes
-* [Protected Attribute](protected-attribute.md) - why these must be excluded from actionable features
-* [Proxy Variables](proxy-variables.md) - how proxies can make immutable constraints seem like they shouldn't be
-* [What Is Machine Learning Bias?](ml-bias.md) - how actionability constraints reveal real-world inequities
-
-## Related Projects in This Repo
-
-* [`Benefits Denial/`](#) - the audit used for the actionable recourse example above
-* [`Open Dataset Profiler`](#) - validation tool for the actionable-recourse detection code
-* [`Cross-Domain Benchmark Harness`](#) - shows how recourse costs compare across different audits
-
-## Further Reading
-
-* [Ustun, B., Spangher, A., Liu, Y. (2019): Actionable Recourse in Linear Classification](https://arxiv.org/abs/1907.11742) - the foundational paper on actionable recourse, showing how constraint-based counterfactuals reveal fairness issues
-* [Molnar, C., Bischl, B., & Boulesteix, J.-F. (2020): Surrogates for Model Interpretation](https://arxiv.org/abs/1905.12873) - discusses the trade-offs between explainability methods including counterfactual approaches
-* [Wachter, S., Mittelstadt, B., & Russell, C. (2017): Counterfactual Explanations Without Opening the Black Box](https://arxiv.org/abs/1711.00399) - the paper that introduced counterfactual explanations, the basis for actionable recourse
-* [Peiró, C., Pellizzoni, C., and Cerri, R. (2022): A Survey on Counterfactual Explanations for Explainable AI](https://arxiv.org/abs/2203.12574) - comprehensive review of counterfactual methods and their actionability constraints
-
----
-*Part of [The Fair Code Project](https://instagram.com/thefaircodeproject) - exposing and fixing algorithmic bias with real data and open code.*
+- [Counterfactual Explanation](counterfactual-explanation.md) - a description of what input change flips one prediction; recourse adds feasibility and actionability.
+- [Disparate Treatment](disparate-treatment.md) - direct use of a protected attribute, which the hiring audit's baseline model includes.
+- [Fairness Through Unawareness](fairness-through-unawareness.md) - why removing a protected input alone does not guarantee fair outcomes.
+- [Demographic Parity](demographic-parity.md) - an outcome-rate comparison, unlike the individual cost comparison here.
+- [Ustun, B., Spangher, A., Liu, Y. (2019). _Actionable Recourse in Linear Classification_. Proceedings of the ACM Conference on Fairness, Accountability, and Transparency (FAT\* 2019).](https://doi.org/10.1145/3287560.3287566) - develops integer-programming methods for actionable recourse in linear classifiers and shows that modeling choices can affect recourse.
 

@@ -622,13 +622,12 @@ window.FAIR_CODE_EXPLAINERS = [
   {
     "slug": "algorithmic-recourse",
     "title": "Algorithmic Recourse",
-    "subtitle": "What you can actually change to flip a model's decision.",
-    "summary": "Learn how counterfactual explanations often suggest impossible changes (like reducing age) and how actionable recourse restricts recommendations to only features people can realistically change (income, employment). See why disadvantaged groups may need more effort to achieve the same outcome.",
+    "subtitle": "A decision-changing path is only useful if a person can actually take it.",
+    "summary": "Learn how algorithmic recourse differs from a counterfactual explanation, how to constrain changes to actionable features, and how a reproducible hiring-audit example compares recourse costs across groups.",
     "tags": [
       "explainability",
-      "metrics",
-      "detection",
-      "healthcare"
+      "fairness",
+      "case-study"
     ]
   }
 ];
