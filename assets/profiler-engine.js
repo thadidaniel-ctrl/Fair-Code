@@ -1421,3 +1421,17 @@
       'v_threshold': minV
     };
   }
+
+  global.FairCodeProfiler = {
+    DEFAULT_OPTS: DEFAULT_OPTS,
+    parseCSV: parseCSV,
+    sniffDelimiter: sniffDelimiter,
+    parseJSON: parseJSON,
+    parseXLSX: parseXLSX,
+    profile: profile,
+    parseReference: parseReference,
+    compare: compare,
+    publicParams: publicParams,
+    proxyHints: runProxyHints
+  };
+})(typeof window !== 'undefined' ? window : globalThis);

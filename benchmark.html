@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Benchmark Results Dashboard</title>
+    <link rel="stylesheet" href="assets/benchmark-styles.css">
+    <script src="assets/bootstrap-utils.js"></script>
+</head>
+<body>
+    <div class="container-fluid">
+        <!-- Navigation -->
+        <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+            <div class="container-fluid d-md-flex">
+                <a class="navbar-brand" href="#">Fair Code</a>
+                <button class="btn btn-outline-light me-3 me-md-2" onclick="openFilterPanel()">Filter</button>
+            </div>
+        </nav>
+
+        <!-- Main Layout -->
+        <div class="row">
+            <!-- Left Sidebar: Filter Panel -->
+            <div class="col-md-3 d-flex flex-column">
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <h5 class="card-title">Filters</h5>
+                        <div class="form-group">
+                            <label for="filter-audit" class="form-label">Audit</label>
+                            <select id="filter-audit" class="form-select">
+                                <option value="">All Audits</option>
+                                <option value="credit_fairness">Credit Fairness</option>
+                                <option value="hiring">Hiring</option>
+                                <option value="lending">Lending</option>
+                                <option value="healthcare">Healthcare</option>
+                                <option value="tenant_screening">Tenant Screening</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="filter-model" class="form-label">Model</label>
+                            <select id="filter-model" class="form-select">
+                                <option value="">All Models</option>
+                                <option value="model_A">model_A</option>
+                                <option value="model_B">model_B</option>
+                                <option value="mitigation_1">mitigation_1</option>
+                                <option value="mitigation_2">mitigation_2</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="filter-strategy" class="form-label">Strategy</label>
+                            <select id="filter-strategy" class="form-select">
+                                <option value="">All Strategies</option>
+                                <option value="baseline">Baseline</option>
+                                <option value="mitigation_1">Mitigation 1</option>
+                                <option value="mitigation_2">Mitigation 2</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="filter-metric" class="form-label">Metric</label>
+                            <select id="filter-metric" class="form-select">
+                                <option value="demographic_parity">Demographic Parity</option>
+                                <option value="accuracy">Accuracy</option>
+                                <option value="fairness_gap">Fairness Gap</option>
+                                <option value="threshold">Threshold</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="filter-protected" class="form-label">Protected Attributes</label>
+                            <input type="checkbox" id="filter-protected" class="form-check-input">
+                                <label for="filter-protected" class="form-check-label">Include Protected Attributes</label>
+                        </div>
+                        <button class="btn btn-primary mt-2" onclick="applyFilters()">Apply Filters</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Content -->
+            <div class="col-md-9">
+                <div class="row">
+                    <!-- Tabs -->
+                    <div class="tab-container">
+                        <div class="tab-tab" id="tab-fairness">
+                            <div class="tab-brand">Fairness Metrics</div>
+                            <div class="tab-content">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h5 class="mb-0">Fairness Metrics</h5>
+                                        <div class="btn-group">
+                                            <button class="btn btn-sm btn-outline-primary" data-filter="fairness">Fairness</button>
+                                            <button class="btn btn-sm btn-outline-primary" data-filter="performance">Performance</button>
+                                            <button class="btn btn-sm btn-outline-primary" data-filter="comparison">Comparison</button>
+                                        </div>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="table-responsive">
+                                            <table id="fairness-table" class="table table-hover">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Audit</th>
+                                                        <th>Model</th>
+                                                        <th>Metric</th>
+                                                        <th>Value</th>
+                                                        <th>CI Lower</th>
+                                                        <th>CI Upper</th>
+                                                        <th>Threshold</th>
+                                                        <th>Flag</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="fairness-table-body">
+                                                    <!-- Populated by JavaScript -->
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="tab-tab" id="tab-performance">
+                                    <div class="tab-brand">Performance Metrics</div>
+                                    <div class="tab-content">
+                                        <div class="card">
+                                            <div class="card-header">
+                                                <h5 class="mb-0">Performance Metrics</h5>
+                                            </div>
+                                            <div class="card-body">
+                                                <div class="table-responsive">
+                                                    <table id="performance-table" class="table table-hover">
+                                                        <thead>
+                                                            <tr>
+                                                                <th>Audit</th>
+                                                                <th>Model</th>
+                                                                <th>Metric</th>
+                                                                <th>Value</th>
+                                                                <th>CI Lower</th>
+                                                                <th>CI Upper</th>
+                                                                <th>Threshold</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody id="performance-table-body">
+                                                            <!-- Populated by JavaScript -->
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                <div class="tab-tab" id="tab-charts">
+                                    <div class="tab-brand">Charts</div>
+                                    <div class="tab-content">
+                                        <div class="card">
+                                            <div class="card-header">
+                                                <h5 class="mb-0">Interactive Charts</h5>
+                                            </div>
+                                            <div class="card-body">
+                                                <div id="fairness-charts">
+                                                    <!-- Charts will be rendered here -->
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="tab-tab" id="tab-summary">
+                                    <div class="tab-brand">Summary</div>
+                                    <div class="tab-content">
+                                        <div class="card">
+                                            <div class="card-header">
+                                                <h5 class="mb-0">Summary Statistics</h5>
+                                            </div>
+                                            <div class="card-body">
+                                                <div class="table-responsive">
+                                                    <table id="summary-table" class="table table-hover">
+                                                        <thead>
+                                                            <tr>
+                                                                <th>Metric</th>
+                                                                <th>Mean</th>
+                                                                <th>Median</th>
+                                                                <th>Std Dev</th>
+                                                                <th>Count</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody id="summary-table-body">
+                                                            <!-- Populated by JavaScript -->
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="tab-tab" id="tab-export">
+                                    <div class="tab-brand">Export</div>
+                                    <div class="tab-content">
+                                        <div class="card">
+                                            <div class="card-header">
+                                                <h5 class="mb-0">Export Options</h5>
+                                            </div>
+                                            <div class="card-body">
+                                                <button class="btn btn-primary" id="export-fairness">Export Fairness Metrics</button>
+                                                <button class="btn btn-outline-secondary" id="export-performance">Export Performance Metrics</button>
+                                                <button class="btn btn-outline-info" id="export-comparison">Export Comparison</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="bg-light py-4 mt-auto">
+            <div class="container-fluid">
+                <p class="text-muted text-center py-2">Benchmark Results Dashboard - Fair Code</p>
+            </div>
+        </footer>
+    </div>
+
+    <script src="assets/benchmark-dashboard.js"></script>
+</body>
+</html>

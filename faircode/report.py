@@ -8,7 +8,9 @@ section banners, percentage formatting) so it feels native to the project.
 from __future__ import annotations
 
 import csv
+import html
 import io
+import json
 
 WIDTH = 62
 DISPLAY_GROUPS = 12  # cap rows shown per dimension; full data stays in the result
@@ -27,15 +29,6 @@ def to_json(result: dict, indent: int = 2, provenance: dict | None = None) -> st
 
     The result dict is not mutated - callers still print the terminal or HTML
     rendering from the same object afterwards.
-    """
-    if provenance is None:
-        return json.dumps(result, indent=indent)
-    return json.dumps(dict(result, provenance=provenance), indent=indent)
-
-
-def to_json(result: dict, indent: int = 2, provenance: dict | None = None) -> str:
-    """Serialise a profile or compare result.
-    ... (existing docstring)
     """
     if provenance is None:
         return json.dumps(result, indent=indent)
@@ -137,10 +130,10 @@ def compare_to_csv(cmp: dict) -> str:
     if cmp.get("flags"):
         meta.append("flags: " + "; ".join(cmp["flags"]))
     if cmp.get("proxy_hints_a"):
-        meta.append(f"proxy_hints_A: " + ", ".join(
+        meta.append("proxy_hints_A: " + ", ".join(
             f"{h['a']}↔{h['b']}" for h in cmp["proxy_hints_a"]))
     if cmp.get("proxy_hints_b"):
-        meta.append(f"proxy_hints_B: " + ", ".join(
+        meta.append("proxy_hints_B: " + ", ".join(
             f"{h['a']}↔{h['b']}" for h in cmp["proxy_hints_b"]))
     if cmp.get("added_dimensions"):
         meta.append("added_dimensions: " + ", ".join(cmp["added_dimensions"]))

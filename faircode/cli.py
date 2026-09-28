@@ -38,7 +38,7 @@ from .loaders_extra import get_xlsx_sheet_info, read_table
 from .profiler import _resolve_opts, parse_reference, profile
 from .provenance import build as build_provenance
 from .proxy import parse_held_out_specs, proxy_hints
-from .report import compare_to_terminal, to_html, compare_to_html, to_json, to_terminal, to_csv
+from .report import compare_to_csv, compare_to_terminal, to_html, compare_to_html, to_json, to_terminal, to_csv
 
 _MAP_CHOICES = VALID_KINDS + ("ignore",)
 
@@ -230,7 +230,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.proxy_hints_with and not args.proxy_hints:
             print("error: --proxy-hints-with needs --proxy-hints", file=sys.stderr)
             return 2
-        if args.export_csv == "-" and args.reference == "-":
+        if args.csv == "-" and args.reference == "-":
             print(
                 "error: profile input and --reference can't both read from stdin "
                 "(a stream can only be read once)",
@@ -243,7 +243,7 @@ def main(argv: list[str] | None = None) -> int:
                 spec.partition("=") for spec in args.proxy_hints_with or []
             )
         )
-        if args.export_csv == "-" and held_out_uses_stdin:
+        if args.csv == "-" and held_out_uses_stdin:
             print(
                 "error: profile input and --proxy-hints-with can't both read from stdin "
                 "(a stream can only be read once)",
@@ -251,9 +251,9 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 2
 
-        df = _read_or_exit(args.export_csv)
+        df = _read_or_exit(args.csv)
 
-        sheet_info = get_xlsx_sheet_info(args.export_csv)
+        sheet_info = get_xlsx_sheet_info(args.csv)
         if sheet_info is not None:
             sheet_name, ignored_sheets = sheet_info
             if ignored_sheets:
@@ -318,7 +318,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.json:
             provenance = None
             if not args.no_provenance:
-                digests = [("dataset_hash", args.export_csv)]
+                digests = [("dataset_hash", args.csv)]
                 if args.reference:
                     digests.append(("reference_hash", args.reference))
                 provenance = build_provenance(digests, _resolve_opts(opts), overrides)
@@ -340,7 +340,7 @@ def main(argv: list[str] | None = None) -> int:
                       file=sys.stderr)
                 return 2
             print(f"CSV report written to {csv_path}", file=sys.stderr)
-        else:
+        elif not args.json:
             print(to_terminal(result))
         if args.fail_under is not None and result["overall_score"] is None:
             print(
@@ -358,7 +358,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "compare":
-        if args.export_csv_a == "-" and args.export_csv_b == "-":
+        if args.csv_a == "-" and args.csv_b == "-":
             print("error: --compare can't read both datasets from stdin "
                   "(a stream can only be read once)", file=sys.stderr)
             return 2
@@ -370,11 +370,11 @@ def main(argv: list[str] | None = None) -> int:
             "missing_flag": args.missing_flag,
             "min_group_size": args.min_group_size,
         }
-        df_a = _read_or_exit(args.export_csv_a)
-        df_b = _read_or_exit(args.export_csv_b)
+        df_a = _read_or_exit(args.csv_a)
+        df_b = _read_or_exit(args.csv_b)
         _check_map_columns(overrides, set(df_a.columns) | set(df_b.columns))
 
-        for path in (args.export_csv_a, args.export_csv_b):
+        for path in (args.csv_a, args.csv_b):
             sheet_info = get_xlsx_sheet_info(path)
             if sheet_info is not None:
                 sheet_name, ignored_sheets = sheet_info
@@ -391,7 +391,7 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
-        result = compare(profile_a, profile_b, name_a=args.export_csv_a, name_b=args.export_csv_b)
+        result = compare(profile_a, profile_b, name_a=args.csv_a, name_b=args.csv_b)
 
         if args.proxy_hints:
             try:
@@ -415,12 +415,12 @@ def main(argv: list[str] | None = None) -> int:
             provenance = None
             if not args.no_provenance:
                 provenance = build_provenance(
-                    [("dataset_hash_a", args.export_csv_a), ("dataset_hash_b", args.export_csv_b)],
+                    [("dataset_hash_a", args.csv_a), ("dataset_hash_b", args.csv_b)],
                     _resolve_opts(opts), overrides)
             print(to_json(result, provenance=provenance))
-        if args.export_csv:
+        if args.csv:
             import os
-            csv_path = args.export_csv
+            csv_path = args.csv
             if os.path.exists(csv_path):
                 print(
                     f"warning: {csv_path} already exists, overwriting",
@@ -435,7 +435,7 @@ def main(argv: list[str] | None = None) -> int:
                       file=sys.stderr)
                 return 2
             print(f"CSV report written to {csv_path}", file=sys.stderr)
-        else:
+        elif not args.json:
             print(compare_to_terminal(result))
         if args.fail_on_drift and result["drift_detected"]:
             print(
