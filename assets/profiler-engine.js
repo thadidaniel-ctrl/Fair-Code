@@ -1139,16 +1139,285 @@
     };
   }
 
-  global.FairCodeProfiler = { parseCSV: parseCSV, parseJSON: parseJSON, parseXLSX: parseXLSX,
-                              sniffDelimiter: sniffDelimiter,
-                              profile: profile, compare: compare,
-                              parseReference: parseReference,
-                              // publicParams: resolved knobs for an export's
-                              // provenance.params, matching the Python path (#490).
-                              publicParams: publicParams,
-                              // Exposed so the Profile/Compare threshold-input
-                              // placeholders (issue #377) can be sourced from
-                              // this single source of truth instead of a
-                              // hardcoded, driftable copy in profiler.html.
-                              DEFAULT_OPTS: DEFAULT_OPTS };
-})(typeof globalThis !== 'undefined' ? globalThis : this);
+    // ── Proxy hint detection (informational only - see SPEC section 9) ─────────────────
+  var PROXY_ALPHA = 0.05; // default significance level for chi-squared test
+
+  function _crosstab(table, col_a, col_b) {
+    // Build a simple 2D contingency table of column values
+    var crosstab = {};
+    var _t = table || [];
+    var rows = _t.length;
+    if (rows === 0) return crosstab;
+    for (var i = 0; i < rows; i++) {
+      var a = _t[i][col_a];
+      var b = _t[i][col_b];
+      if (a === null || a === undefined || b === null || b === undefined) continue;
+      if (!crosstab[a]) crosstab[a] = {};
+      crosstab[a][b] = (crosstab[a][b] || 0) + 1;
+    }
+    return crosstab;
+  }
+
+  function _getUniqueValues(arr) {
+    var uniq = {};
+    var out = [];
+    for (var i = 0; i < arr.length; i++) {
+      var val = arr[i];
+      if (val === null || val === undefined) continue;
+      if (!uniq.hasOwnProperty(val)) {
+        uniq[val] = true;
+        out.push(val);
+      }
+    }
+    return out;
+  }
+
+  function _chiSquaredTest(contingency) {
+    // Chi-squared test for independence of two categorical variables
+    var chi2 = 0;
+    var rows = Object.keys(contingency).length;
+    if (rows < 2) return { statistic: 0, p_value: 1, df: 0 };
+    var cols = Object.keys(contingency[Object.keys(contingency)[0]]).length;
+    if (cols < 2) return { statistic: 0, p_value: 1, df: 0 };
+    var n = 0;
+    for (var r of Object.keys(contingency)) {
+      for (var c of Object.keys(contingency[r])) {
+        n += contingency[r][c];
+      }
+    }
+    if (n === 0) return { statistic: 0, p_value: 1, df: 0 };
+    var df = (rows - 1) * (cols - 1);
+    for (var r of Object.keys(contingency)) {
+      for (var c of Object.keys(contingency[r])) {
+        var obs = contingency[r][c];
+        var exp = (Object.values(contingency).reduce(function (sum, row) { return sum + (row[c] || 0); }, 0) * Object.keys(contingency).reduce(function (sum, row) { return sum + (contingency[row][c] || 0); }, 0)) / n;
+        if (exp > 0) chi2 += Math.pow(obs - exp, 2) / exp;
+      }
+    }
+    var p_value = 1;
+    if (chi2 > 0 && df > 0) {
+      p_value = _chiSquaredCDF(chi2, df);
+    }
+    return { statistic: chi2, p_value: p_value, df: df };
+  }
+
+  function _chiSquaredCDF(x, df) {
+    // Regularized incomplete gamma function Q(a, x) for chi-squared CDF
+    // This is the complement of the lower incomplete gamma function
+    if (x <= 0) return 1;
+    if (df <= 0) return 0;
+    // Use series expansion for small x
+    if (x < df + 1) {
+      return _gammaSeries(df/2, x);
+    }
+    // Use continued fraction for larger x
+    return 1 - _gammaCF(df/2, x);
+  }
+
+  function _gammaSeries(a, x) {
+    var sum = 1;
+    var term = 1;
+    for (var n = 1; term > 1e-12 * sum; n++) {
+      term *= x / (a + n - 1);
+      sum += term;
+    }
+    return Math.exp(-x) * sum * (a / x) ** a;
+  }
+
+  function _gammaCF(a, x) {
+    var b = x + a + 1;
+    var f = 1;
+    var C = 1 / b;
+    var D = x / b;
+    var H = D;
+    for (var i = 1; i <= 200; i++) {
+      f = -f * (i / (i + a - 1));
+      D = D * x / (b + 2 * i - 1);
+      H += D;
+      if (Math.abs(f * H) < 1e-12) break;
+    }
+    return f * H;
+  }
+
+  function _cramersV(chi2, n, min_dim) {
+    // Cramér's V correlation for contingency tables
+    if (n === 0 || min_dim <= 1) return 0;
+    return Math.sqrt(chi2 / (n * (min_dim - 1)));
+  }
+
+  function ProxyHintDetector() {
+    this.detect = function(data, protectedColumns, options) {
+      var opts = options || {};
+      var alpha = opts.alpha !== undefined ? opts.alpha : PROXY_ALPHA;
+      var minV = opts.minV !== undefined ? opts.minV : 0.1;
+      
+      // Build labelized version for each column
+      var labelized = {};
+      for (var i = 0; i < data.columns.length; i++) {
+        var col = data.columns[i];
+        var kind = this._getColumnKind(data, col, protectedColumns);
+        if (kind === 'protected' || kind === 'unprotected') {
+          labelized[col] = this._labelizeColumn(data, col, kind);
+        }
+      }
+      
+      var names = Object.keys(labelized);
+      var hints = [];
+      
+      for (var i = 0; i < names.length; i++) {
+        for (var j = i + 1; j < names.length; j++) {
+          var name_a = names[i];
+          var name_b = names[j];
+          
+          // Skip if one is a subset of the other
+          if (this._isSubset(labelized[name_a], labelized[name_b])) continue;
+          if (this._isSubset(labelized[name_b], labelized[name_a])) continue;
+          
+          var ct = _crosstab(data, name_a, name_b);
+          if (Object.keys(ct).length < 2 || Object.keys(ct[Object.keys(ct)[0]]).length < 2) continue;
+          
+          var result = _chiSquaredTest(ct);
+          var n = this._countNonNullRows(data);
+          var min_dim = Math.min(Object.keys(ct).length, Object.keys(ct[Object.keys(ct)[0]]).length);
+          var cramers_v = _cramersV(result.statistic, n, min_dim);
+          
+          if (result.p_value < alpha && cramers_v >= minV) {
+            var is_proxy = false;
+            var a_is_protected = protectedColumns.includes(name_a);
+            var b_is_protected = protectedColumns.includes(name_b);
+            
+            if (a_is_protected && !b_is_protected) {
+              is_proxy = true;
+            } else if (b_is_protected && !a_is_protected) {
+              is_proxy = true;
+            }
+            
+            if (is_proxy) {
+              hints.push({
+                'a': name_a, 'b': name_b,
+                'p_value': result.p_value,
+                'cramers_v': Math.round(cramers_v * 10000) / 10000,
+                'chi2': Math.round(result.statistic * 100) / 100
+              });
+            }
+          }
+        }
+      }
+      
+      hints.sort(function (h1, h2) { return h1.p_value - h2.p_value; });
+      return {
+        'proxy_pairs': hints,
+        'summary': hints.length === 0 ? 
+          "No proxy columns detected." : 
+          hints.length + " proxy pair(s) detected. Consider removing these columns to reduce bias."
+      };
+    };
+    
+    this._getColumnKind = function(data, col, protectedColumns) {
+      if (protectedColumns.includes(col)) {
+        return 'protected';
+      }
+      if (col === 'id' || col === 'key' || col === 'identifier') {
+        return 'unprotected'; // treat as informational only
+      }
+      return 'unprotected';
+    };
+    
+    this._labelizeColumn = function(data, col, kind) {
+      if (kind === 'protected') {
+        return data[col].filter(function (_, i) { 
+          return data._nullFlags[i] !== true; 
+        });
+      }
+      return data[col];
+    };
+    
+    this._isSubset = function(arr1, arr2) {
+      var set1 = {};
+      for (var i = 0; i < arr1.length; i++) {
+        set1[arr1[i]] = true;
+      }
+      for (var i = 0; i < arr2.length; i++) {
+        if (!set1[arr2[i]]) return false;
+      }
+      return true;
+    };
+    
+    this._countNonNullRows = function(data) {
+      var count = 0;
+      for (var i = 0; i < data._nullFlags.length; i++) {
+        if (!data._nullFlags[i]) count++;
+      }
+      return count;
+    };
+  }
+
+  // ── Public API for proxy hint detection ───────────────────────
+  function runProxyHints(data, protectedColumns, options) {
+    var opts = options || {};
+    var alpha = opts.alpha !== undefined ? opts.alpha : PROXY_ALPHA;
+    var minV = opts.minV !== undefined ? opts.minV : 0.1;
+    
+    var labelized = {};
+    for (var i = 0; i < data.columns.length; i++) {
+      var col = data.columns[i];
+      var kind = protectedColumns.includes(col) ? 'protected' : 'unprotected';
+      if (kind === 'protected') {
+        labelized[col] = data[col].filter(function (_, idx) { return !data._nullFlags[idx]; });
+      } else {
+        labelized[col] = data[col];
+      }
+    }
+    
+    var names = Object.keys(labelized);
+    var hints = [];
+    
+    for (var i = 0; i < names.length; i++) {
+      for (var j = i + 1; j < names.length; j++) {
+        var name_a = names[i];
+        var name_b = names[j];
+        
+        var a_is_protected = protectedColumns.includes(name_a);
+        var b_is_protected = protectedColumns.includes(name_b);
+        
+        if (!a_is_protected && !b_is_protected) continue;
+        if (a_is_protected && b_is_protected) continue;
+        
+        var proxy_name = a_is_protected ? name_a : name_b;
+        var target_name = b_is_protected ? name_b : name_a;
+        
+        var ct = _crosstab(data, proxy_name, target_name);
+        if (Object.keys(ct).length < 2 || Object.keys(ct[Object.keys(ct)[0]]).length < 2) continue;
+        
+        var result = _chiSquaredTest(ct);
+        var n = _countNonNullRows(data);
+        var min_dim = Math.min(Object.keys(ct).length, Object.keys(ct[Object.keys(ct)[0]]).length);
+        var cramers_v = _cramersV(result.statistic, n, min_dim);
+        
+        if (result.p_value < alpha && cramers_v >= minV) {
+          hints.push({
+            'proxy_column': proxy_name, 
+            'protected_column': target_name,
+            'p_value': result.p_value,
+            'cramers_v': Math.round(cramers_v * 10000) / 10000,
+            'chi2': Math.round(result.statistic * 100) / 100,
+            'interpretation': cramers_v >= 0.5 ? 'strong' : 
+                               cramers_v >= 0.3 ? 'moderate' : 'weak'
+          });
+        }
+      }
+    }
+    
+    hints.sort(function (h1, h2) { return h1.p_value - h2.p_value; });
+    
+    var summary = hints.length === 0 ? 
+      "No proxy columns detected." : 
+      hints.length + " proxy pair(s) detected. Consider removing these columns to reduce bias."
+    
+    return {
+      'proxy_pairs': hints,
+      'summary': summary,
+      'p_value_threshold': alpha,
+      'v_threshold': minV
+    };
+  }

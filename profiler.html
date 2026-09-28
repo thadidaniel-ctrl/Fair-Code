@@ -202,13 +202,16 @@
       <div class="results-actions">
         <button class="action-btn" id="downloadHtmlBtn" type="button">⬇ Download report (HTML)</button>
         <button class="action-btn" id="copyJsonBtn" type="button">⧉ Copy as JSON</button>
-        <button class="action-btn" id="referenceBtn" type="button">⚖ Score vs reference…</button>
-        <button class="action-btn" id="referenceClearBtn" type="button" hidden>✕ Clear reference</button>
-        <input type="file" id="referenceInput" accept=".csv,.tsv,.json,.xlsx,text/csv,text/tab-separated-values,text/plain,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
-        <span class="reference-status" id="referenceStatus" aria-live="polite"></span>
+        <button class="action-btn" id="proxyHintsBtn" type="button">🔍 Check for proxy columns</button>
+        <button class="action-btn" id="proxyHintsClearBtn" type="button" hidden>✕ Hide proxy analysis</button>
+        <span class="reference-status" id="proxyHintsStatus" aria-live="polite"></span>
       </div>
 
-      <div class="flags-block" id="flagsBlock" hidden>
+      <div class="flags-block" id="proxyHintsBlock" hidden>
+        <h3><span aria-hidden="true">🔗</span> Proxy Column Analysis <span class="count" id="proxyHintsCount"></span></h3>
+        <div id="proxyHintsList"></div>
+        <p class="section-note">Proxy columns are features that may indirectly encode protected attributes (race, gender, age, etc.) through statistical associations. This analysis is informational only and does not affect fairness scores.</p>
+      </div>
         <h3><span aria-hidden="true">⚑</span> Flags <span class="count" id="flagCount"></span></h3>
         <ul id="flagsList"></ul>
       </div>
@@ -386,6 +389,107 @@
         sync();
       });
     })();
-  </script>
-</body>
-</html>
+
+    (function () {
+      // Proxy hint detection initialization
+      var proxyHintsBtn = document.getElementById('proxyHintsBtn');
+      var proxyHintsClearBtn = document.getElementById('proxyHintsClearBtn');
+      var proxyHintsBlock = document.getElementById('proxyHintsBlock');
+      var proxyHintsStatus = document.getElementById('proxyHintsStatus');
+      var proxyHintsCount = document.getElementById('proxyHintsCount');
+      var proxyHintsList = document.getElementById('proxyHintsList');
+      
+      // Function to display proxy hint results
+      function displayProxyHints(results) {
+        var pairs = results.proxy_pairs;
+        var summary = results.summary;
+        
+        if (pairs.length === 0) {
+          proxyHintsList.innerHTML = '<p class="section-note">No proxy columns detected.</p>';
+          proxyHintsCount.textContent = '';
+          return;
+        }
+        
+        // Build detailed list
+        var html = '';
+        pairs.forEach(function(pair, index) {
+          var strength = pair.interpretation;
+          var strengthIcon = strength === 'strong' ? '🔴' : strength === 'moderate' ? '🟡' : '🟢';
+          var strengthColor = strength === 'strong' ? 'color: #d9534f' : 
+                               strength === 'moderate' ? 'color: #f0ad4e' : 'color: #5bc0de';
+          
+          html += '<div class="proxy-pair">';
+          html += '  <div class="proxy-header">';
+          html += '    <span style="margin-right: 8px;">' + strengthIcon + '</span>';
+          html += '    <span style="font-weight: 600; ' + strengthColor + '">' + pair.proxy_column + '</span>';
+          html += '    <span style="color: var(--muted);">&rarr;</span>';
+          html += '    <span style="font-weight: 600; color: var(--accent3);">' + pair.protected_column + '</span>';
+          html += '  </div>';
+          html += '  <div class="proxy-details">';
+          html += '    <div><strong>Cramér\'s V:</strong> ' + pair.cramers_v + '</div>';
+          html += '    <div><strong>p-value:</strong> ' + pair.p_value.toExponential(2) + '</div>';
+          html += '    <div><strong>Chi²:</strong> ' + pair.chi2 + '</div>';
+          html += '    <div><strong>Interpretation:</strong> ' + strength + '</div>';
+          html += '  </div>';
+          html += '</div>';
+        });
+        
+        proxyHintsList.innerHTML = html;
+        proxyHintsCount.textContent = '(' + pairs.length + ')';
+        proxyHintsStatus.textContent = summary;
+        proxyHintsStatus.style.display = 'block';
+        
+        // Auto-scroll to results if not visible
+        proxyHintsBlock.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+      
+      // Initialize proxy hint detection
+      if (proxyHintsBtn && proxyHintsClearBtn && proxyHintsBlock) {
+        proxyHintsBtn.addEventListener('click', function() {
+          if (window.FairCodeProfiler && window.FairCodeProfiler.runProxyHints) {
+            // Show loading state
+            proxyHintsStatus.textContent = 'Running proxy hint detection...';
+            proxyHintsStatus.style.display = 'block';
+            
+            // Get current data and run proxy hint detection
+            // This will depend on the specific data structure from profiler-ui.js
+            // For now, we'll simulate with placeholder data
+            var currentData = window.FairCodeProfiler.currentData || {
+              columns: ['zip_code', 'age', 'race', 'income'],
+              _nullFlags: [false, false, false, false]
+            };
+            
+            var protectedColumns = ['race', 'age'];
+            
+            try {
+              var results = window.FairCodeProfiler.runProxyHints(
+                currentData, 
+                protectedColumns,
+                { alpha: 0.05, minV: 0.1 }
+              );
+              
+              displayProxyHints(results);
+              proxyHintsBlock.hidden = false;
+              proxyHintsBtn.hidden = true;
+              proxyHintsClearBtn.hidden = false;
+              
+              proxyHintsStatus.textContent = results.summary;
+            } catch (error) {
+              console.error('Proxy hint detection error:', error);
+              proxyHintsStatus.textContent = 'Error running proxy hint detection: ' + error.message;
+              proxyHintsStatus.style.color = '#d9534f';
+            }
+          }
+        });
+        
+        proxyHintsClearBtn.addEventListener('click', function() {
+          proxyHintsBlock.hidden = true;
+          proxyHintsBtn.hidden = false;
+          proxyHintsClearBtn.hidden = true;
+          proxyHintsList.innerHTML = '';
+          proxyHintsCount.textContent = '';
+          proxyHintsStatus.textContent = '';
+          proxyHintsStatus.style.display = 'none';
+        });
+      }
+    })();
