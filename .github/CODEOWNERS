@@ -1,15 +1,21 @@
 # =========================
+
 # Core library (high-stakes)
+
 # =========================
+
 /faircode/ @yakew7
 
 # Research artifacts
+
 /paper/ @yakew7
 /results/ @yakew7
-**/audit.yaml @yakew7
+\*\*/audit.yaml @yakew7
 
 # Audit datasets & scripts (fair.py/unfair.py/data - everything in
+
 # each audit folder besides audit.yaml, already covered above)
+
 /AI\ Fair\ Recruitment/ @yakew7
 /Benefits\ Denial/ @yakew7
 /COMPAS/ @yakew7
@@ -19,10 +25,13 @@
 /Tenant\ Screening/ @yakew7
 
 # Audit notebooks - the repo's notebooks live in one top-level directory, not
+
 # inside each audit folder, so the per-audit entries above never matched them
+
 /notebooks/ @yakew7
 
 # Project policy
+
 /CLAUDE.md @yakew7
 /CONTRIBUTING.md @yakew7
 /CITATION.cff @yakew7
@@ -31,6 +40,7 @@
 /LICENSE @yakew7
 
 # CI / automation
+
 /.github/workflows/ @yakew7 @ahmdkaml
 /.github/CODEOWNERS @yakew7 @ahmdkaml
 /.github/dependabot.yml @yakew7 @ahmdkaml
@@ -41,6 +51,7 @@
 /.github/PULL_REQUEST_TEMPLATE.md @yakew7
 
 # Python packaging
+
 /pyproject.toml @yakew7
 /Makefile @yakew7 @propcgamer20-png
 /requirements.txt @yakew7
@@ -51,26 +62,37 @@
 /.vscode/ @yakew7
 
 # Scripts & tests
+
 /scripts/ @yakew7 @ahmdkaml @propcgamer20-png
 /tests/ @yakew7 @ahmdkaml
 
 # =========================
+
 # Website & web profiler
+
 # =========================
+
 # Catch-all for anything under assets/ not matched by a more specific entry
+
 # below (e.g. README media like assets/demo.gif). Must stay above the
+
 # specific /assets/ entries - CODEOWNERS uses the last matching pattern.
+
 /assets/ @yakew7
 /assets/profiler-engine.js @yakew7 @ahmdkaml
 /assets/profiler-compare.js @yakew7 @ahmdkaml
 /assets/profiler-ui.js @yakew7 @ahmdkaml
 /assets/profiler.css @yakew7 @ahmdkaml
 /profiler.html @yakew7 @ahmdkaml
+/benchmark.html @yakew7
 /index.html @yakew7
 
 # =========================
+
 # Educational content
+
 # =========================
+
 /explainers/ @yakew7 @Shreyash0712
 /assets/explainers-data.json @yakew7
 /assets/explainers-data.js @yakew7
@@ -78,12 +100,17 @@
 /assets/explainers.css @yakew7
 
 # =========================
+
 # Generated media output (e.g. /brag video compositions)
+
 # =========================
+
 /brag-output/ @yakew7
 
 # Website assets
+
 # =========================
+
 /assets/fonts/ @yakew7
 /assets/icons/ @yakew7
 /assets/og/ @yakew7
@@ -92,8 +119,11 @@
 /sitemap.xml @yakew7
 
 # =========================
+
 # Top-level docs
+
 # =========================
+
 /README.md @yakew7 @Shreyash0712
 /CHANGELOG.md @yakew7 @Shreyash0712
 /CONTRIBUTORS.md @yakew7 @Shreyash0712
