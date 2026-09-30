@@ -940,3 +940,87 @@ def test_cli_benchmark_success_run(tmp_path, capsys):
     assert (out_dir / "results_fairness.csv").is_file()
     assert (out_dir / "results_performance.csv").is_file()
     assert (out_dir / "summary.csv").is_file()
+
+
+def test_profile_sample_happy_path(tmp_path, capsys):
+    """faircode profile --sample should work and produce a report."""
+    exit_code = main(["profile", "--sample"])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    # Should have the usual title and scores
+    assert "FAIR CODE - DATASET REPRESENTATION PROFILE" in captured.out
+    assert "Rows: 160" in captured.out
+    assert "Columns: 6" in captured.out
+    # The sample is known to score 72
+    assert "Representation score: 72/100" in captured.out
+    # Should produce some flags (the sample is imbalanced)
+    assert "FLAGS" in captured.out
+
+
+def test_profile_sample_json(tmp_path, capsys):
+    """faircode profile --sample --json should produce valid JSON with expected fields."""
+    exit_code = main(["profile", "--sample", "--json"])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    data = json.loads(captured.out)
+    assert data["n_rows"] == 160
+    assert data["n_cols"] == 6
+    assert data["overall_score"] == 72
+    assert data["grade"] == "B"
+    assert data["dimensions_detected"] is True
+    # Check that we have the expected dimensions
+    dim_names = [d["name"] for d in data["dimensions"]]
+    assert set(dim_names) == {"age", "sex", "race", "region", "diabetic"}
+
+
+def test_profile_sample_with_other_options(tmp_path, capsys):
+    """Sample should work with --html, --export-csv, and thresholds."""
+    # --html
+    exit_code = main(["profile", "--sample", "--html", str(tmp_path / "report.html")])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert f"HTML report written to {tmp_path / 'report.html'}" in captured.err
+    assert (tmp_path / "report.html").exists()
+    # --export-csv
+    exit_code = main(["profile", "--sample", "--export-csv", str(tmp_path / "report.csv")])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert f"CSV report written to {tmp_path / 'report.csv'}" in captured.err
+    assert (tmp_path / "report.csv").exists()
+    csv_content = (tmp_path / "report.csv").read_text(encoding="utf-8")
+    assert "dimension,kind,label,count,share" in csv_content
+    # --min-share
+    exit_code = main(["profile", "--sample", "--min-share", "0.1"])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    # Changing min-share may affect which groups are flagged, but should still run
+    assert "FAIR CODE - DATASET REPRESENTATION PROFILE" in captured.out
+
+
+def test_profile_sample_invalid_combinations(tmp_path, capsys):
+    """Combining --sample with a dataset path should error."""
+    # Create a dummy CSV to try to combine with --sample
+    dummy = tmp_path / "dummy.csv"
+    dummy.write_text("a,b\n1,2\n", encoding="utf-8")
+    exit_code = main(["profile", str(dummy), "--sample"])
+    assert exit_code == 2
+    captured = capsys.readouterr()
+    assert "--sample cannot be combined with a dataset path" in captured.err
+
+    # The reverse order should also error
+    exit_code = main(["profile", "--sample", str(dummy)])
+    assert exit_code == 2
+    captured = capsys.readouterr()
+    assert "--sample cannot be combined with a dataset path" in captured.err
+
+
+def test_profile_requires_either_dataset_or_sample(tmp_path, capsys):
+    """faircode profile with no arguments should error, asking for dataset or --sample."""
+    exit_code = main(["profile"])
+    assert exit_code == 2
+    captured = capsys.readouterr()
+    assert "a dataset path is required unless --sample is given" in captured.err
+
+    # But providing a dataset should work (we already have many tests for that)
+    # And providing --sample should work (tested above)

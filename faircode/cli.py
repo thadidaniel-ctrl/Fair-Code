@@ -31,6 +31,7 @@ from . import __version__
 from .compare import compare
 from .detect import VALID_KINDS
 from .loaders_extra import get_xlsx_sheet_info, read_table
+from .sample import sample_df
 # _resolve_opts gives the thresholds that were actually in force, defaults
 # included, which is what the provenance block has to record. Reaching for the
 # private helper follows the existing precedent in compare.py (`from .profiler
@@ -38,7 +39,7 @@ from .loaders_extra import get_xlsx_sheet_info, read_table
 from .profiler import _resolve_opts, parse_reference, profile
 from .provenance import build as build_provenance
 from .proxy import parse_held_out_specs, proxy_hints
-from .report import compare_to_terminal, to_html, compare_to_html, to_json, to_terminal
+from .report import compare_to_terminal, to_html, compare_to_html, to_json, to_terminal, to_csv
 
 _MAP_CHOICES = VALID_KINDS + ("ignore",)
 
@@ -136,8 +137,11 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("profile", help="profile a dataset for demographic imbalance")
-    p.add_argument("csv", help="path to the dataset file (.csv, .tsv, .xlsx, .json, or .parquet), "
-                               "or - to read CSV/TSV from stdin")
+    p.add_argument("csv", nargs="?", default=None,
+                   help="path to the dataset file (.csv, .tsv, .xlsx, .json, or .parquet), "
+                        "or - to read CSV/TSV from stdin (omit with --sample)")
+    p.add_argument("--sample", action="store_true",
+                   help="use the built-in sample dataset (health-themed, deliberately imbalanced)")
     p.add_argument("--json", action="store_true", help="emit JSON to stdout")
     p.add_argument("--html", metavar="PATH",
                    help="write a standalone HTML report to PATH")
@@ -223,6 +227,18 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "profile":
+        if args.sample and args.csv is not None:
+            print(
+                "error: --sample cannot be combined with a dataset path",
+                file=sys.stderr,
+            )
+            return 2
+        if not args.sample and args.csv is None:
+            print(
+                "error: a dataset path is required unless --sample is given",
+                file=sys.stderr,
+            )
+            return 2
         if args.proxy_hints_with and not args.proxy_hints:
             print("error: --proxy-hints-with needs --proxy-hints", file=sys.stderr)
             return 2
@@ -247,17 +263,22 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 2
 
-        df = _read_or_exit(args.csv)
+        if args.sample:
+            df = sample_df()
+            sample_csv = None
+        else:
+            df = _read_or_exit(args.csv)
+            sample_csv = args.csv
 
-        sheet_info = get_xlsx_sheet_info(args.csv)
-        if sheet_info is not None:
-            sheet_name, ignored_sheets = sheet_info
-            if ignored_sheets:
-                print(
-                    f"Read sheet '{sheet_name}' - {len(ignored_sheets)} "
-                    f"other sheet(s) ignored.",
-                    file=sys.stderr,
-                )
+            sheet_info = get_xlsx_sheet_info(args.csv)
+            if sheet_info is not None:
+                sheet_name, ignored_sheets = sheet_info
+                if ignored_sheets:
+                    print(
+                        f"Read sheet '{sheet_name}' - {len(ignored_sheets)} "
+                        f"other sheet(s) ignored.",
+                        file=sys.stderr,
+                    )
 
         opts = {
             "min_share": args.min_share,
@@ -314,13 +335,41 @@ def main(argv: list[str] | None = None) -> int:
         if args.json:
             provenance = None
             if not args.no_provenance:
-                digests = [("dataset_hash", args.csv)]
-                if args.reference:
-                    digests.append(("reference_hash", args.reference))
-                provenance = build_provenance(digests, _resolve_opts(opts), overrides)
+                if args.sample:
+                    # Sample dataset has no filesystem hash; pass an empty
+                    # digests list so provenance records the in-memory origin.
+                    provenance = build_provenance(
+                        [], _resolve_opts(opts), overrides
+                    )
+                    provenance["dataset_hash"] = None
+                    provenance["dataset_hash_note"] = (
+                        "dataset was generated in memory from the built-in sample"
+                    )
+                else:
+                    digests = [("dataset_hash", args.csv)]
+                    if args.reference:
+                        digests.append(("reference_hash", args.reference))
+                    provenance = build_provenance(digests, _resolve_opts(opts), overrides)
             print(to_json(result, provenance=provenance))
         else:
             print(to_terminal(result))
+        if args.export_csv:
+            import os
+            csv_path = args.export_csv
+            if os.path.exists(csv_path):
+                print(
+                    f"warning: {csv_path} already exists, overwriting",
+                    file=sys.stderr,
+                )
+            csv_content = to_csv(result)
+            try:
+                with open(csv_path, "w", encoding="utf-8") as fh:
+                    fh.write(csv_content)
+            except OSError as exc:
+                print(f"error: could not write CSV report to {csv_path}: {exc}",
+                      file=sys.stderr)
+                return 2
+            print(f"CSV report written to {csv_path}", file=sys.stderr)
         if args.fail_under is not None and result["overall_score"] is None:
             print(
                 "error: cannot apply --fail-under: no demographic columns detected",
