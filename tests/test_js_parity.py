@@ -57,6 +57,55 @@ def test_compare_card_renderers_special_case_kind_mismatch():
     assert ".drift-badge.skipped" in (REPO_ROOT / "assets" / "profiler.css").read_text(encoding="utf-8")
 
 
+def test_buildHtmlReport_output_structure():
+    """buildHtmlReport() must produce structured output matching the Python to_html()
+    contract. Source-level check (mirrors test_compare_card_renderers_special_case_kind_mismatch)
+    - buildHtmlReport() is DOM-coupled and has no unit harness."""
+
+    src = (REPO_ROOT / "assets" / "profiler-ui.js").read_text(encoding="utf-8")
+
+    # Isolate buildHtmlReport function body
+    func_start = src.index("function buildHtmlReport(")
+    func_body = src[func_start:]
+    brace_count = 1
+    i = 0
+    while brace_count > 0 and i < len(func_body):
+        if func_body[i] == "{":
+            brace_count += 1
+        elif func_body[i] == "}":
+            brace_count -= 1
+        i += 1
+    func_body = func_body[:i]
+
+    # Check for essential structural elements from Python to_html()
+
+    # 1. Dimension/group rendering structure
+    assert "r.dimensions.map" in func_body
+    assert "d.groups.slice(0, DISPLAY_GROUPS)" in func_body
+    assert "class=\"dim\"" in func_body
+    assert "class=\"score\"" in func_body
+
+    # 2. Flags section
+    assert "r.flags.length" in func_body
+    assert "class=\"flags\"" in func_body
+    assert "Flags" in func_body
+
+    # 3. Reference information
+    assert "if (d.reference)" in func_body
+    assert "class=\"reference\"" in func_body
+    assert "Reference" in func_body
+
+    # 4. Report-level structure
+    assert "Dataset Representation Profile" in func_body
+    assert "overall_score" in func_body
+    assert "grade" in func_body
+    assert "!DOCTYPE html" in func_body
+
+    # 5. Feature flags from the Python implementation
+    assert "under-represented" in func_body
+    assert "small-group" in func_body
+
+
 # Real audit datasets are already tracked in their own audit folders - reuse
 # them instead of keeping a second multi-megabyte copy under tests/fixtures.
 CSV_PATHS = {
