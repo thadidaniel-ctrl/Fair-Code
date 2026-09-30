@@ -39,7 +39,7 @@ from .sample import sample_df
 from .profiler import _resolve_opts, parse_reference, profile
 from .provenance import build as build_provenance
 from .proxy import parse_held_out_specs, proxy_hints
-from .report import compare_to_terminal, to_html, compare_to_html, to_json, to_terminal, to_csv
+from .report import compare_to_terminal, to_html, compare_to_html, to_json, to_terminal, to_csv, compare_to_csv
 
 _MAP_CHOICES = VALID_KINDS + ("ignore",)
 
@@ -145,6 +145,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--json", action="store_true", help="emit JSON to stdout")
     p.add_argument("--html", metavar="PATH",
                    help="write a standalone HTML report to PATH")
+    p.add_argument("--csv", dest="csv_path", metavar="PATH",
+                   help="write a CSV report to PATH")
     p.add_argument("--fail-under", type=float, metavar="N",
                    help="exit 1 when the overall representation score is below N")
     p.add_argument("--map", action="append", metavar="COL=KIND",
@@ -176,7 +178,7 @@ def main(argv: list[str] | None = None) -> int:
                         "(restores the pre-2.1 export shape exactly)")
 
     c = sub.add_parser("compare",
-                       help="compare two datasets for representation drift")
+                        help="compare two datasets for representation drift")
     c.add_argument("csv_a", help="baseline dataset A (.csv, .tsv, .xlsx, .json, or .parquet), "
                                  "or - to read CSV/TSV from stdin")
     c.add_argument("csv_b", help="current dataset B (.csv, .tsv, .xlsx, .json, or .parquet), "
@@ -184,6 +186,8 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--json", action="store_true", help="emit JSON to stdout")
     c.add_argument("--html", metavar="PATH",
                    help="write a standalone HTML report to PATH")
+    c.add_argument("--csv", dest="csv_path", metavar="PATH",
+                   help="write a CSV report to PATH")
     c.add_argument("--proxy-hints", action="store_true",
                    help="flag strongly-associated column pairs via chi-squared, "
                         "for both datasets separately (needs scipy)")
@@ -353,9 +357,9 @@ def main(argv: list[str] | None = None) -> int:
             print(to_json(result, provenance=provenance))
         else:
             print(to_terminal(result))
-        if args.export_csv:
+        if args.csv_path:
             import os
-            csv_path = args.export_csv
+            csv_path = args.csv_path
             if os.path.exists(csv_path):
                 print(
                     f"warning: {csv_path} already exists, overwriting",
@@ -439,6 +443,23 @@ def main(argv: list[str] | None = None) -> int:
                       file=sys.stderr)
                 return 2
             print(f"HTML report written to {args.html}", file=sys.stderr)
+        if args.csv_path:
+            import os
+            csv_path = args.csv_path
+            if os.path.exists(csv_path):
+                print(
+                    f"warning: {csv_path} already exists, overwriting",
+                    file=sys.stderr,
+                )
+            csv_content = compare_to_csv(result)
+            try:
+                with open(csv_path, "w", encoding="utf-8") as fh:
+                    fh.write(csv_content)
+            except OSError as exc:
+                print(f"error: could not write CSV report to {csv_path}: {exc}",
+                      file=sys.stderr)
+                return 2
+            print(f"CSV report written to {csv_path}", file=sys.stderr)
         if args.json:
             provenance = None
             if not args.no_provenance:

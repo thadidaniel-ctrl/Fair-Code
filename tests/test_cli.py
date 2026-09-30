@@ -975,15 +975,15 @@ def test_profile_sample_json(tmp_path, capsys):
 
 
 def test_profile_sample_with_other_options(tmp_path, capsys):
-    """Sample should work with --html, --export-csv, and thresholds."""
+    """Sample should work with --html, --csv, and thresholds."""
     # --html
     exit_code = main(["profile", "--sample", "--html", str(tmp_path / "report.html")])
     assert exit_code == 0
     captured = capsys.readouterr()
     assert f"HTML report written to {tmp_path / 'report.html'}" in captured.err
     assert (tmp_path / "report.html").exists()
-    # --export-csv
-    exit_code = main(["profile", "--sample", "--export-csv", str(tmp_path / "report.csv")])
+    # --csv
+    exit_code = main(["profile", "--sample", "--csv", str(tmp_path / "report.csv")])
     assert exit_code == 0
     captured = capsys.readouterr()
     assert f"CSV report written to {tmp_path / 'report.csv'}" in captured.err

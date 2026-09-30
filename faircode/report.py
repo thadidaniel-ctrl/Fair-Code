@@ -7,11 +7,87 @@ section banners, percentage formatting) so it feels native to the project.
 
 from __future__ import annotations
 
+import csv
 import html
+import io
 import json
 
 WIDTH = 62
 DISPLAY_GROUPS = 12  # cap rows shown per dimension; full data stays in the result
+
+
+def to_csv(result: dict) -> str:
+    """Render a profile result as CSV.
+
+    Columns: dimension,kind,label,count,share,ci_low,ci_high,under_represented,small_group
+    Each row = one group within a dimension.
+    """
+    if not result.get("dimensions"):
+        return ""
+
+    rows: list[list[str]] = []
+    for d in result["dimensions"]:
+        for g in d["groups"]:
+            ci_low = g.get("ci_low")
+            ci_high = g.get("ci_high")
+            rows.append([
+                d["name"],
+                d["kind"],
+                g.get("label", ""),
+                str(g.get("count", 0)),
+                f"{g.get('share', 0):.4f}",
+                f"{ci_low * 100:.1f}" if ci_low is not None else "",
+                f"{ci_high * 100:.1f}" if ci_high is not None else "",
+                str(g.get("label") in d.get("under_represented", [])).lower(),
+                str(g.get("small_group", False)).lower(),
+            ])
+
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(["dimension", "kind", "label", "count", "share", "ci_low", "ci_high",
+                     "under_represented", "small_group"])
+    for r in rows:
+        writer.writerow(r)
+
+    return out.getvalue()
+
+
+def compare_to_csv(cmp: dict) -> str:
+    """Render a compare result as CSV.
+
+    Columns: dimension,kind,label,count_a,share_a,ci_low_a,ci_high_a,
+             count_b,share_b,ci_low_b,ci_high_b,drift,psi
+    """
+    if not cmp.get("dimensions"):
+        return ""
+
+    rows: list[list[str]] = []
+    for cd in cmp["dimensions"]:
+        for g in cd["groups"]:
+            rows.append([
+                cd["name"],
+                cd.get("kind", ""),
+                g.get("label", ""),
+                str(g.get("count_a", 0)),
+                f"{g.get('share_a', 0):.4f}",
+                f"{g.get('ci_low_a', 0) * 100:.1f}" if g.get("ci_low_a") else "",
+                f"{g.get('ci_high_a', 0) * 100:.1f}" if g.get("ci_high_a") else "",
+                str(g.get("count_b", 0)),
+                f"{g.get('share_b', 0):.4f}",
+                f"{g.get('ci_low_b', 0) * 100:.1f}" if g.get("ci_low_b") else "",
+                f"{g.get('ci_high_b', 0) * 100:.1f}" if g.get("ci_high_b") else "",
+                str(g.get("share_delta", 0)),
+                f"{cd.get('psi', 0):.3f}" if cd.get("psi") else "",
+            ])
+
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(["dimension", "kind", "label", "count_a", "share_a", "ci_low_a", "ci_high_a",
+                     "count_b", "share_b", "ci_low_b", "ci_high_b", "drift", "psi"])
+    for r in rows:
+        writer.writerow(r)
+
+    return out.getvalue()
 
 
 def to_json(result: dict, indent: int = 2, provenance: dict | None = None) -> str:
