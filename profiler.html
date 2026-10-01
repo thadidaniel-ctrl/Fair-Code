@@ -176,6 +176,7 @@
         <p class="dropzone-hint" id="dropzoneHint">Comma- or tab-separated values with a header row, JSON
         (records or split orientation), or an .xlsx workbook (first sheet). (Parquet files: use
         <code>faircode profile data.parquet</code> from the CLI.) Proxy-hint detection: use
+        <strong>Check for proxy columns</strong> below, or
         <code>faircode profile/compare --proxy-hints</code> from the CLI.</p>
       </div>
     </section>
@@ -202,6 +203,7 @@
       <div class="results-actions">
         <button class="action-btn" id="downloadHtmlBtn" type="button">⬇ Download report (HTML)</button>
         <button class="action-btn" id="copyJsonBtn" type="button">⧉ Copy as JSON</button>
+        <button class="action-btn" id="proxyHintsBtn" type="button">🔗 Check for proxy columns</button>
         <button class="action-btn" id="referenceBtn" type="button">⚖ Score vs reference…</button>
         <button class="action-btn" id="referenceClearBtn" type="button" hidden>✕ Clear reference</button>
         <input type="file" id="referenceInput" accept=".csv,.tsv,.json,.xlsx,text/csv,text/tab-separated-values,text/plain,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
@@ -211,6 +213,12 @@
       <div class="flags-block" id="flagsBlock" hidden>
         <h3><span aria-hidden="true">⚑</span> Flags <span class="count" id="flagCount"></span></h3>
         <ul id="flagsList"></ul>
+      </div>
+
+      <div class="flags-block" id="proxyHintsBlock" hidden>
+        <h3><span aria-hidden="true">🔗</span> Proxy hints <span class="kind">chi-squared association, informational</span></h3>
+        <p class="section-note">These column pairs are strongly associated, so one may be a proxy for the other. Informational only - the representation score is unaffected.</p>
+        <ul id="proxyHintsList"></ul>
       </div>
 
       <details class="mapping-block" id="mappingBlock">

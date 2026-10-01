@@ -20,6 +20,9 @@
   var results = document.getElementById('results');
   var downloadHtmlBtn = document.getElementById('downloadHtmlBtn');
   var copyJsonBtn = document.getElementById('copyJsonBtn');
+  var proxyHintsBtn = document.getElementById('proxyHintsBtn');
+  var proxyHintsBlock = document.getElementById('proxyHintsBlock');
+  var proxyHintsList = document.getElementById('proxyHintsList');
   var announcer = document.getElementById('resultsAnnouncer');
   var mappingBlock = document.getElementById('mappingBlock');
   var mappingList = document.getElementById('mappingList');
@@ -111,6 +114,7 @@
   });
   downloadHtmlBtn.addEventListener('click', downloadHtmlReport);
   copyJsonBtn.addEventListener('click', copyResultAsJSON);
+  proxyHintsBtn.addEventListener('click', renderProxyHints);
 
   function readFile(file) {
     var okExt = /\.(csv|tsv|json|xlsx)$/i.test(file.name);
@@ -220,6 +224,9 @@
   }
 
   function pct(x) { return (x * 100).toFixed(1) + '%'; }
+  // 4 significant digits with trailing zeros trimmed, matching Python's
+  // f"{p_value:.4g}" in faircode/report.py so both renderers agree.
+  function sig4(x) { return String(parseFloat(Number(x).toPrecision(4))); }
   function esc(s) {
     return String(s).replace(/[&<>"]/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
@@ -229,6 +236,10 @@
   function render(r, name, scroll) {
     currentResult = r;
     currentName = name;
+    // A new profile result has no proxy_hints of its own, so the previous
+    // check's panel is dropped here to keep the screen and the exports in
+    // agreement (#758).
+    resetProxyHints();
 
     // Score ring
     var ring = document.getElementById('scoreRing');
@@ -364,6 +375,44 @@
       wrap.appendChild(el);
     });
     host.appendChild(wrap);
+  }
+
+  // ── Proxy hints (issue #758) ────────────────────────────────────────────
+  // Opt-in chi-squared check for "this column may be a proxy for that one",
+  // the same informational signal the CLI's --proxy-hints produces. The
+  // computed pairs are stored on currentResult - without that they were drawn
+  // on screen but dropped from every export, because buildHtmlReport() and
+  // copyResultAsJSON() both read currentResult and nothing else (#758).
+  // Assigned unconditionally, including for an empty list, so a later check
+  // that finds nothing clears an earlier check's results instead of leaving
+  // them to be exported as if they still applied.
+  function renderProxyHints() {
+    if (!currentResult || !currentTable) return;
+    var hints = E.proxyHints(currentTable, currentResult.dimensions);
+    currentResult.proxy_hints = hints;
+
+    proxyHintsList.innerHTML = '';
+    if (!hints.length) {
+      proxyHintsBlock.hidden = true;
+      flashButton(proxyHintsBtn, '✓ No proxy pairs found');
+      return;
+    }
+    hints.forEach(function (h) {
+      var li = document.createElement('li');
+      li.textContent = h.a + ' ↔ ' + h.b + '  (χ² p=' + sig4(h.p_value) +
+        ", Cramér's V=" + h.cramers_v.toFixed(2) + ')';
+      proxyHintsList.appendChild(li);
+    });
+    proxyHintsBlock.hidden = false;
+    flashButton(proxyHintsBtn, '✓ ' + hints.length + ' pair' + (hints.length === 1 ? '' : 's') + ' flagged');
+  }
+
+  // A fresh profile() result carries no proxy_hints, so hide the previous
+  // check's panel rather than leaving it describing the dataset the user just
+  // replaced.
+  function resetProxyHints() {
+    proxyHintsList.innerHTML = '';
+    proxyHintsBlock.hidden = true;
   }
 
   // ── Column mapping (manual override, issue #62) ─────────────────────────
@@ -670,6 +719,20 @@
       flagHtml = '<section class="flags"><h2>Flags</h2><ul>' + items + '</ul></section>';
     }
 
+    // Mirrors faircode/report.py's to_html() proxy_hints section, in the same
+    // place in the document (#758). Gated on .length so an empty check - which
+    // stores [] - draws nothing rather than an empty heading.
+    var proxyHtml = '';
+    if (r.proxy_hints && r.proxy_hints.length) {
+      var proxyItems = r.proxy_hints.map(function (h) {
+        return '<li>' + esc(h.a) + ' ↔ ' + esc(h.b) +
+          ' (χ² p=' + sig4(h.p_value) + ", Cramér's V=" + h.cramers_v.toFixed(2) + ')</li>';
+      }).join('');
+      proxyHtml = '<section class="flags"><h2>Proxy Hints ' +
+        '<span class="kind">chi-squared association, informational</span></h2>' +
+        '<ul>' + proxyItems + '</ul></section>';
+    }
+
     var scoreHtml = r.overall_score === null
       ? '<strong>Not measured</strong> (no demographic columns detected)'
       : '<strong>' + r.overall_score + '/100</strong> (Grade ' + r.grade + ')';
@@ -713,7 +776,7 @@
       '<div class="head"><h1>Dataset Representation Profile</h1>\n' +
       '<p>' + r.n_rows.toLocaleString() + ' rows · ' + r.n_cols + ' columns · Score ' +
       scoreHtml + '</p></div>\n' +
-      dimBlocks + '\n' + flagHtml + '\n' +
+      dimBlocks + '\n' + flagHtml + '\n' + proxyHtml + '\n' +
       '<p style="color:var(--muted);font-size:12px;margin-top:32px">\n' +
       'Generated by <a href="https://github.com/yakew7/Fair-Code">Fair Code</a> - diagnostic only.</p>\n' +
       '</body></html>';

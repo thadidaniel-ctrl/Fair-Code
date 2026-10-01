@@ -269,10 +269,8 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.sample:
             df = sample_df()
-            sample_csv = None
         else:
             df = _read_or_exit(args.csv)
-            sample_csv = args.csv
 
             sheet_info = get_xlsx_sheet_info(args.csv)
             if sheet_info is not None:

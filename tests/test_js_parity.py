@@ -106,6 +106,140 @@ def test_buildHtmlReport_output_structure():
     assert "small-group" in func_body
 
 
+# ── Proxy hints in the web profiler (issue #758) ────────────────────────────
+# The browser "Check for proxy columns" feature used to draw its results and
+# drop them, so neither export carried them. These cover the engine port and
+# the export path that lost the data.
+
+requires_scipy = pytest.mark.skipif(
+    importlib.util.find_spec("scipy") is None,
+    reason="optional 'proxy' extra not installed",
+)
+
+
+def _proxied_dataset() -> str:
+    """CSV where zip_code is a perfect proxy for sex and region is independent."""
+    regions = ["north", "south", "east", "west"]
+    rows = ["sex,zip_code,region,age"]
+    for i in range(200):
+        sex = "male" if i % 2 else "female"
+        zip_code = "10001" if sex == "male" else "10002"
+        rows.append(f"{sex},{zip_code},{regions[(i // 2) % 4]},{20 + (i % 55)}")
+    return "\n".join(rows) + "\n"
+
+
+@requires_scipy
+def test_js_engine_proxy_hints_match_python(tmp_path):
+    """The JS proxyHints() port must flag the same pairs, with the same numbers,
+    as faircode/proxy.py - otherwise the web profiler would contradict the
+    CLI's --proxy-hints on the same file."""
+    from faircode.proxy import proxy_hints
+
+    csv = tmp_path / "proxied.csv"
+    csv.write_text(_proxied_dataset(), encoding="utf-8")
+
+    df = pd.read_csv(csv)
+    py_hints = proxy_hints(df, profile(df)["dimensions"])
+    # Guard against a vacuous pass: zip_code really is a proxy for sex here.
+    assert [(h["a"], h["b"]) for h in py_hints] == [("sex", "zip_code")]
+
+    script = (
+        "const fs=require('fs');"
+        "require(process.argv[1]);"
+        "const E=globalThis.FairCodeProfiler;"
+        "const table=E.parseCSV(fs.readFileSync(process.argv[2],'utf8'));"
+        "process.stdout.write(JSON.stringify("
+        "E.proxyHints(table, E.profile(table).dimensions)));"
+    )
+    completed = subprocess.run(
+        ["node", "-e", script,
+         str(REPO_ROOT / "assets" / "profiler-engine.js"), str(csv)],
+        capture_output=True, text=True, encoding="utf-8", check=True,
+    )
+    js_hints = json.loads(completed.stdout)
+
+    assert [(h["a"], h["b"]) for h in js_hints] == [(h["a"], h["b"]) for h in py_hints]
+    for js_hint, py_hint in zip(js_hints, py_hints):
+        assert js_hint["cramers_v"] == pytest.approx(py_hint["cramers_v"], rel=1e-6)
+        assert js_hint["chi2"] == pytest.approx(py_hint["chi2"], rel=1e-6)
+        # A tiny p-value must survive the port rather than cancel to 0.
+        assert js_hint["p_value"] == pytest.approx(py_hint["p_value"], rel=1e-6)
+
+
+def _run_ui_harness() -> dict:
+    completed = subprocess.run(
+        ["node", str(REPO_ROOT / "tests" / "js_profiler_ui_harness.js")],
+        capture_output=True, text=True, encoding="utf-8", check=True,
+    )
+    return json.loads(completed.stdout)
+
+
+def test_proxy_hints_reach_both_exports_after_check():
+    """#758 regression: the computed pairs must land on currentResult, which is
+    what buildHtmlReport() and copyResultAsJSON() both read. Before the fix the
+    pair was drawn on screen and absent from both exports."""
+    report = _run_ui_harness()
+
+    # Shown on screen ...
+    assert report["check"]["panelHidden"] is False
+    assert any("sex ↔ zip_code" in item for item in report["check"]["items"])
+
+    # ... and in the standalone HTML report, in to_html()'s wording.
+    assert "Proxy Hints" in report["afterCheckHtml"]
+    assert "chi-squared association, informational" in report["afterCheckHtml"]
+    assert "sex ↔ zip_code" in report["afterCheckHtml"]
+
+    # ... and in the JSON export.
+    hints = report["afterCheckJson"]["proxy_hints"]
+    assert [(h["a"], h["b"]) for h in hints] == [("sex", "zip_code")]
+    assert hints[0]["p_value"] < 0.05
+
+
+def test_exports_omit_proxy_hints_until_checked():
+    """A profile the user never proxy-checked must not grow a proxy_hints key or
+    an empty Proxy Hints heading - the exports keep their pre-#758 shape."""
+    report = _run_ui_harness()
+
+    assert "proxy_hints" not in report["beforeCheckJsonParsed"]
+    assert "Proxy Hints" not in report["beforeCheckHtml"]
+
+
+def test_proxy_hints_not_fabricated_or_left_stale():
+    """Re-profiling a new dataset, and checking a dataset with no associated
+    pair, must both leave the exports clean - no leftover pairs from the earlier
+    check, and no invented ones for the empty result."""
+    report = _run_ui_harness()
+
+    # A fresh profile replaces currentResult, so the previous check's pairs go
+    # with it rather than riding along into the new file's export.
+    assert "proxy_hints" not in report["afterReprofileJson"]
+    assert "Proxy Hints" not in report["afterReprofileHtml"]
+
+    # Checking finds nothing: recorded as an empty list, drawn as nothing.
+    assert report["emptyCheck"]["panelHidden"] is True
+    assert report["emptyCheck"]["items"] == []
+    assert report["emptyCheckJson"]["proxy_hints"] == []
+    assert "Proxy Hints" not in report["emptyCheckHtml"]
+
+
+def test_buildHtmlReport_proxy_section_source_shape():
+    """Source-level guard on the two halves of the fix: the report must read
+    r.proxy_hints, and renderProxyHints() must write to currentResult. Mirrors
+    test_threshold_input_recovers_panel_after_invalid_value - these functions
+    are DOM-coupled, so the behavioural coverage above runs them through the
+    Node harness rather than a JS unit runner."""
+    src = (REPO_ROOT / "assets" / "profiler-ui.js").read_text(encoding="utf-8")
+
+    assert "currentResult.proxy_hints = hints;" in src
+
+    report = src[src.index("function buildHtmlReport("):]
+    report = report[: report.index("\n  function ")]
+    assert "r.proxy_hints" in report
+    # Gated on length, not truthiness: an empty list is truthy in JS, so a bare
+    # `if (r.proxy_hints)` would draw an empty Proxy Hints heading.
+    assert "r.proxy_hints.length" in report
+
+
 # Real audit datasets are already tracked in their own audit folders - reuse
 # them instead of keeping a second multi-megabyte copy under tests/fixtures.
 CSV_PATHS = {

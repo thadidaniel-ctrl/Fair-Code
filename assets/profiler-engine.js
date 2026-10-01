@@ -1139,10 +1139,178 @@
     };
   }
 
+  // ── Proxy hints (chi-squared, informational; issue #758) ────────────────
+  // Browser port of faircode/proxy.py's proxy_hints(), so the web profiler's
+  // "Check for proxy columns" surfaces the same column pairs the CLI's
+  // --proxy-hints does. Like the Python original this is opt-in and stays out
+  // of profile(), so it can never affect the representation score or the
+  // engine-parity tests. scipy's chi2_contingency() applies Yates' continuity
+  // correction to 2x2 tables by default - matched here so both engines agree on
+  // which pairs clear the alpha threshold.
+  var PROXY_ALPHA = 0.05;
+
+  // log(Gamma(x)) via the Lanczos approximation (g = 7).
+  function logGamma(x) {
+    var COF = [
+      0.99999999999980993, 676.5203681218851, -1259.1392167224028,
+      771.32342877765313, -176.61502916214059, 12.507343278686905,
+      -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7
+    ];
+    var i;
+    if (x < 0.5) {
+      return Math.log(Math.PI / Math.sin(Math.PI * x)) - logGamma(1 - x);
+    }
+    x -= 1;
+    var a = COF[0];
+    var t = x + 7.5;
+    for (i = 1; i < 9; i++) a += COF[i] / (x + i);
+    return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(t) - t + Math.log(a);
+  }
+
+  // Regularized UPPER incomplete gamma Q(a, x) = 1 - P(a, x), which is exactly
+  // a chi-squared p-value - so it is computed directly rather than as
+  // 1 - P(a, x). That subtraction cancels catastrophically for the strongly
+  // associated pairs this is meant to surface (it collapsed a real
+  // p = 1.5e-44 to 0, losing the magnitude the Python/scipy path reports).
+  // Series expansion for x < a + 1 (where P is small, so the complement is
+  // safe), Lentz continued fraction otherwise (Numerical Recipes gser/gcf).
+  function gammaQ(a, x) {
+    if (x <= 0) return 1;
+    if (a <= 0) return 1;
+    var n;
+    if (x < a + 1) {
+      var ap = a, sum = 1 / a, del = sum;
+      for (n = 0; n < 1000; n++) {
+        ap += 1;
+        del *= x / ap;
+        sum += del;
+        if (Math.abs(del) < Math.abs(sum) * 1e-16) break;
+      }
+      return 1 - sum * Math.exp(-x + a * Math.log(x) - logGamma(a));
+    }
+    var b = x + 1 - a, c = 1 / 1e-300, d = 1 / b, h = d, step;
+    for (n = 1; n < 1000; n++) {
+      var an = -n * (n - a);
+      b += 2;
+      d = an * d + b;
+      if (Math.abs(d) < 1e-300) d = 1e-300;
+      c = b + an / c;
+      if (Math.abs(c) < 1e-300) c = 1e-300;
+      d = 1 / d;
+      step = d * c;
+      h *= step;
+      if (Math.abs(step - 1) < 1e-16) break;
+    }
+    return Math.exp(-x + a * Math.log(x) - logGamma(a)) * h;
+  }
+
+  // Chi-squared test of independence over a counts[r][c]. Mirrors
+  // scipy.stats.chi2_contingency(ct): same chi-squared statistic, same
+  // Yates-corrected 2x2 case, same (rows - 1) * (cols - 1) dof.
+  function chi2Contingency(counts) {
+    var rows = counts.length, cols = counts[0].length, i, j;
+    var rowTotals = [], colTotals = new Array(cols), total = 0;
+    for (j = 0; j < cols; j++) colTotals[j] = 0;
+    for (i = 0; i < rows; i++) {
+      rowTotals[i] = 0;
+      for (j = 0; j < cols; j++) {
+        rowTotals[i] += counts[i][j];
+        colTotals[j] += counts[i][j];
+        total += counts[i][j];
+      }
+    }
+    var dof = (rows - 1) * (cols - 1);
+    var chi2 = 0;
+    for (i = 0; i < rows; i++) {
+      for (j = 0; j < cols; j++) {
+        var expected = rowTotals[i] * colTotals[j] / total;
+        if (expected <= 0) continue;
+        var residual = counts[i][j] - expected;
+        if (dof === 1) {
+          // Yates: shrink each |O - E| by 0.5, floored at 0.
+          residual = Math.abs(residual) - 0.5;
+          if (residual < 0) residual = 0;
+        }
+        chi2 += residual * residual / expected;
+      }
+    }
+    return { chi2: chi2, dof: dof, n: total };
+  }
+
+  // Crosstab of two labelized columns. Pairs where either side is missing are
+  // dropped, matching pandas.crosstab(), which skips NaN keys.
+  function contingencyFor(labelsA, labelsB) {
+    // Prototype-free maps: the keys are cell *values*, so a column containing
+    // "constructor" or "__proto__" would otherwise resolve to an inherited
+    // Object.prototype member instead of a category index.
+    var aKeys = [], bKeys = [], indexA = Object.create(null), indexB = Object.create(null), i;
+    for (i = 0; i < labelsA.length; i++) {
+      var a = labelsA[i], b = labelsB[i];
+      if (a === null || a === undefined || b === null || b === undefined) continue;
+      var ak = String(a), bk = String(b);
+      if (indexA[ak] === undefined) { indexA[ak] = aKeys.length; aKeys.push(ak); }
+      if (indexB[bk] === undefined) { indexB[bk] = bKeys.length; bKeys.push(bk); }
+    }
+    if (aKeys.length < 2 || bKeys.length < 2) return null;
+    var counts = [];
+    for (i = 0; i < aKeys.length; i++) counts.push(new Array(bKeys.length).fill(0));
+    for (i = 0; i < labelsA.length; i++) {
+      var av = labelsA[i], bv = labelsB[i];
+      if (av === null || av === undefined || bv === null || bv === undefined) continue;
+      counts[indexA[String(av)]][indexB[String(bv)]] += 1;
+    }
+    return counts;
+  }
+
+  // `heldOut` is the browser stand-in for proxy.py's held-out columns: a
+  // {column: labelized values} map of protected attributes already dropped
+  // from the table, compared against every dimension and to each other as
+  // plain categorical values (no age banding - they were never profiled).
+  function proxyHints(table, dimensions, alpha, heldOut) {
+    if (alpha === undefined || alpha === null) alpha = PROXY_ALPHA;
+    var labelized = [], names = [], i, j;
+    for (i = 0; i < dimensions.length; i++) {
+      names.push(dimensions[i].name);
+      labelized.push(labelize(table, dimensions[i].name, dimensions[i].kind));
+    }
+    var heldOutKeys = heldOut ? Object.keys(heldOut) : [];
+    for (i = 0; i < heldOutKeys.length; i++) {
+      names.push(heldOutKeys[i]);
+      labelized.push(heldOut[heldOutKeys[i]]);
+    }
+
+    var hints = [];
+    for (i = 0; i < names.length; i++) {
+      for (j = i + 1; j < names.length; j++) {
+        var counts = contingencyFor(labelized[i], labelized[j]);
+        if (!counts) continue;
+        var result = chi2Contingency(counts);
+        var k = Math.min(counts.length, counts[0].length) - 1;
+        var cramersV = (result.n && k) ? Math.sqrt(result.chi2 / (result.n * k)) : 0.0;
+        var pValue = gammaQ(result.dof / 2, result.chi2 / 2);
+        if (pValue < alpha) {
+          hints.push({
+            a: names[i],
+            b: names[j],
+            p_value: pValue,
+            cramers_v: Math.round(cramersV * 10000) / 10000,
+            chi2: Math.round(result.chi2 * 100) / 100
+          });
+        }
+      }
+    }
+    hints.sort(function (left, right) { return left.p_value - right.p_value; });
+    return hints;
+  }
+
   global.FairCodeProfiler = { parseCSV: parseCSV, parseJSON: parseJSON, parseXLSX: parseXLSX,
                               sniffDelimiter: sniffDelimiter,
                               profile: profile, compare: compare,
                               parseReference: parseReference,
+                              // proxyHints: opt-in chi-squared pairs, attached to
+                              // the exported result by profiler-ui.js (#758).
+                              proxyHints: proxyHints,
+                              PROXY_ALPHA: PROXY_ALPHA,
                               // publicParams: resolved knobs for an export's
                               // provenance.params, matching the Python path (#490).
                               publicParams: publicParams,
