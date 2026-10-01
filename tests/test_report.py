@@ -1,7 +1,15 @@
+import csv
+import io
+
+import pandas as pd
 import pytest
 
 # Adjust the import path to match your package structure (e.g., faircode.report)
-from faircode.report import compare_to_html, compare_to_terminal, to_html, to_terminal
+from faircode.compare import compare
+from faircode.profiler import profile
+from faircode.report import (
+    compare_to_csv, compare_to_html, compare_to_terminal, to_csv, to_html, to_terminal,
+)
 
 
 @pytest.fixture
@@ -561,3 +569,58 @@ def test_to_html_does_not_render_negative_zero_reference_delta():
 
     assert "-0.0 pp" not in to_html(result)
     assert "+0.0 pp" in to_html(result)
+
+
+def test_to_csv_has_one_row_per_group_across_all_dimensions():
+    df = pd.DataFrame({
+        "sex": ["M"] * 70 + ["F"] * 30,
+        "race": ["White"] * 60 + ["Black"] * 25 + ["Asian"] * 15,
+    })
+    result = profile(df)
+
+    rows = list(csv.reader(io.StringIO(to_csv(result))))
+    header = rows[0]
+    assert header == ["dimension", "kind", "label", "count", "share", "ci_low",
+                       "ci_high", "under_represented", "small_group"]
+
+    group_rows = rows[1:1 + sum(d["n_groups"] for d in result["dimensions"])]
+    assert len(group_rows) == 5  # 2 sex groups + 3 race groups
+    assert {r[0] for r in group_rows} == {"sex", "race"}
+
+    # a blank line, then the flag section header, then one row per flag
+    blank_index = 1 + len(group_rows)
+    assert rows[blank_index] == []
+    assert rows[blank_index + 1] == ["flag"]
+    assert len(rows) == blank_index + 2 + len(result["flags"])
+
+
+def test_to_csv_flags_under_represented_groups():
+    df = pd.DataFrame({"sex": ["M"] * 195 + ["F"] * 5})
+    result = profile(df)
+
+    rows = list(csv.DictReader(io.StringIO(to_csv(result))))
+    female = next(r for r in rows if r.get("label") == "F")
+    assert female["under_represented"] == "True"
+    male = next(r for r in rows if r.get("label") == "M")
+    assert male["under_represented"] == "False"
+
+
+def test_compare_to_csv_has_group_rows_a_summary_section_and_flags():
+    df_a = pd.DataFrame({"sex": ["M"] * 70 + ["F"] * 30})
+    df_b = pd.DataFrame({"sex": ["M"] * 50 + ["F"] * 50})
+    cmp = compare(profile(df_a), profile(df_b), name_a="A", name_b="B")
+
+    text = compare_to_csv(cmp)
+    blocks = text.split("\r\n\r\n")
+    assert len(blocks) == 3  # group rows, dimension summary, flags
+
+    group_rows = list(csv.DictReader(io.StringIO(blocks[0])))
+    assert {r["label"] for r in group_rows} == {"M", "F"}
+    assert group_rows[0]["dimension"] == "sex"
+
+    summary_rows = list(csv.DictReader(io.StringIO(blocks[1])))
+    assert summary_rows[0]["dimension"] == "sex"
+    assert summary_rows[0]["drift_level"] in ("none", "minor", "moderate", "significant")
+
+    flag_rows = list(csv.DictReader(io.StringIO(blocks[2])))
+    assert [r["flag"] for r in flag_rows] == cmp["flags"]

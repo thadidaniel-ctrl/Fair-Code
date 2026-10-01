@@ -1,0 +1,136 @@
+/* ════════════════════════════════════════════════════
+   FAIR CODE - Benchmark Results Dashboard page
+   matches "The Audit Ledger" design system (shared tokens
+   from index.html/profiler.html); reuses .dropzone,
+   .section-note, .bar-row/.bar-track/.bar-fill from
+   profiler.css instead of redefining them.
+   ════════════════════════════════════════════════════ */
+
+.bench-load-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.bench-load-btn {
+  font-family: var(--mono);
+  font-size: 13px;
+  background: var(--accent);
+  color: var(--bg);
+  border: none;
+  padding: 10px 18px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.bench-load-btn:hover { background: var(--white); }
+.bench-status {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.bench-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 28px 0 18px;
+  border-bottom: 1px solid var(--border);
+}
+.bench-tab {
+  font-family: var(--mono);
+  font-size: 13px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 10px 4px;
+  margin-bottom: -1px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.bench-tab[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+.bench-tab:hover { color: var(--text); }
+
+.bench-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  margin-bottom: 8px;
+}
+.bench-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.bench-filter select {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  text-transform: none;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  min-width: 140px;
+}
+.bench-filter select:hover { border-color: var(--accent); }
+
+.bench-sig-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  margin: 4px 0 18px;
+}
+
+.bench-summary {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 12px;
+}
+
+.bench-table-wrap { overflow-x: auto; margin-bottom: 28px; }
+.bench-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12.5px;
+}
+.bench-table th, .bench-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+.bench-table thead th {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border2);
+}
+.bench-sort-btn {
+  font: inherit;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+.bench-sort-btn:hover { color: var(--accent); }
+.bench-table tbody tr:hover { background: var(--surface); }
+.bench-row-warn td:first-child { border-left: 3px solid var(--warn); }
+.bench-sig-yes { color: var(--accent); font-weight: 600; }
+.bench-sig-no { color: var(--muted); }
+
+.bench-chart-block { margin-top: 8px; margin-bottom: 32px; }
+.bar-fill.bad { background: var(--accent); }
+.bar-fill.good { background: var(--accent3); }

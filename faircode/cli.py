@@ -25,7 +25,11 @@ command additionally requires the optional 'benchmark' extra
 from __future__ import annotations
 
 import argparse
+import hashlib
+import io
 import sys
+
+import pandas as pd
 
 from . import __version__
 from .compare import compare
@@ -39,7 +43,10 @@ from .sample import sample_df
 from .profiler import _resolve_opts, parse_reference, profile
 from .provenance import build as build_provenance
 from .proxy import parse_held_out_specs, proxy_hints
-from .report import compare_to_terminal, to_html, compare_to_html, to_json, to_terminal, to_csv, compare_to_csv
+from .report import (
+    compare_to_csv, compare_to_html, compare_to_terminal, to_csv, to_html, to_json, to_terminal,
+)
+from .sample_data import SAMPLE_FILENAME, build_sample_csv
 
 _MAP_CHOICES = VALID_KINDS + ("ignore",)
 
@@ -137,16 +144,19 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("profile", help="profile a dataset for demographic imbalance")
-    p.add_argument("csv", nargs="?", default=None,
+    p.add_argument("csv", nargs="?",
                    help="path to the dataset file (.csv, .tsv, .xlsx, .json, or .parquet), "
-                        "or - to read CSV/TSV from stdin (omit with --sample)")
+                        "or - to read CSV/TSV from stdin (omit if using --sample)")
     p.add_argument("--sample", action="store_true",
-                   help="use the built-in sample dataset (health-themed, deliberately imbalanced)")
+                   help="profile a small bundled sample dataset instead of a file - "
+                        "a zero-argument way to see what a profile looks like, "
+                        "matching the web profiler's own sample-dataset button")
     p.add_argument("--json", action="store_true", help="emit JSON to stdout")
     p.add_argument("--html", metavar="PATH",
                    help="write a standalone HTML report to PATH")
-    p.add_argument("--csv", dest="csv_path", metavar="PATH",
-                   help="write a CSV report to PATH")
+    p.add_argument("--csv", dest="csv_out", metavar="PATH",
+                   help="write a flat, one-row-per-group CSV export to PATH "
+                        "(dest csv_out - distinct from the csv dataset argument)")
     p.add_argument("--fail-under", type=float, metavar="N",
                    help="exit 1 when the overall representation score is below N")
     p.add_argument("--map", action="append", metavar="COL=KIND",
@@ -173,6 +183,13 @@ def main(argv: list[str] | None = None) -> int:
                    help="missing-data flag threshold (default 0.05)")
     p.add_argument("--min-group-size", type=int, metavar="N",
                    help="warn when a subgroup has fewer than N rows (default: profiler.MIN_GROUP_SIZE)")
+    p.add_argument("--max-categorical-card", type=int, metavar="N",
+                   help="raise/lower the generic-categorical auto-detect cardinality "
+                        "ceiling (default: detect.MAX_CATEGORICAL_CARD)")
+    p.add_argument("--max-dimension-groups", type=int, metavar="N",
+                   help="raise/lower the group-count cutoff past which a non-geography "
+                        "dimension is dropped as identifier/date-like "
+                        "(default: profiler.MAX_DIMENSION_GROUPS)")
     p.add_argument("--no-provenance", action="store_true",
                    help="omit the provenance block from --json output "
                         "(restores the pre-2.1 export shape exactly)")
@@ -186,11 +203,18 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--json", action="store_true", help="emit JSON to stdout")
     c.add_argument("--html", metavar="PATH",
                    help="write a standalone HTML report to PATH")
-    c.add_argument("--csv", dest="csv_path", metavar="PATH",
-                   help="write a CSV report to PATH")
+    c.add_argument("--csv", dest="csv_out", metavar="PATH",
+                   help="write a flat, one-row-per-group CSV export to PATH")
     c.add_argument("--proxy-hints", action="store_true",
                    help="flag strongly-associated column pairs via chi-squared, "
                         "for both datasets separately (needs scipy)")
+    c.add_argument("--proxy-hints-with-a", action="append", metavar="PATH=COLUMN",
+                   help="also test dataset A's proxy_hints against a column already "
+                        "dropped from A; PATH's rows must align 1:1 with csv_a "
+                        "(repeatable, needs --proxy-hints)")
+    c.add_argument("--proxy-hints-with-b", action="append", metavar="PATH=COLUMN",
+                   help="same as --proxy-hints-with-a, for dataset B (rows must align "
+                        "1:1 with csv_b)")
     c.add_argument("--map", action="append", metavar="COL=KIND",
                    help="force a column's dimension when auto-detection misses it "
                         "(applied to both datasets); KIND is one of " +
@@ -205,6 +229,13 @@ def main(argv: list[str] | None = None) -> int:
                    help="missing-data flag threshold (default 0.05)")
     c.add_argument("--min-group-size", type=int, metavar="N",
                    help="warn when a subgroup has fewer than N rows (default: profiler.MIN_GROUP_SIZE)")
+    c.add_argument("--max-categorical-card", type=int, metavar="N",
+                   help="raise/lower the generic-categorical auto-detect cardinality "
+                        "ceiling (default: detect.MAX_CATEGORICAL_CARD)")
+    c.add_argument("--max-dimension-groups", type=int, metavar="N",
+                   help="raise/lower the group-count cutoff past which a non-geography "
+                        "dimension is dropped as identifier/date-like "
+                        "(default: profiler.MAX_DIMENSION_GROUPS)")
     c.add_argument("--fail-on-drift", action="store_true",
                    help="exit 1 when any dimension shows drift or the overall score drops")
     c.add_argument("--no-provenance", action="store_true",
@@ -231,17 +262,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "profile":
-        if args.sample and args.csv is not None:
-            print(
-                "error: --sample cannot be combined with a dataset path",
-                file=sys.stderr,
-            )
+        if args.sample and args.csv:
+            print("error: pass either csv or --sample, not both", file=sys.stderr)
             return 2
-        if not args.sample and args.csv is None:
-            print(
-                "error: a dataset path is required unless --sample is given",
-                file=sys.stderr,
-            )
+        if not args.sample and not args.csv:
+            print("error: profile needs a csv argument (or --sample)", file=sys.stderr)
             return 2
         if args.proxy_hints_with and not args.proxy_hints:
             print("error: --proxy-hints-with needs --proxy-hints", file=sys.stderr)
@@ -268,21 +293,20 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
         if args.sample:
-            df = sample_df()
-            sample_csv = None
+            df = pd.read_csv(io.StringIO(build_sample_csv()))
+            args.csv = SAMPLE_FILENAME  # for any downstream display purposes
+            sheet_info = None
         else:
             df = _read_or_exit(args.csv)
-            sample_csv = args.csv
-
             sheet_info = get_xlsx_sheet_info(args.csv)
-            if sheet_info is not None:
-                sheet_name, ignored_sheets = sheet_info
-                if ignored_sheets:
-                    print(
-                        f"Read sheet '{sheet_name}' - {len(ignored_sheets)} "
-                        f"other sheet(s) ignored.",
-                        file=sys.stderr,
-                    )
+        if sheet_info is not None:
+            sheet_name, ignored_sheets = sheet_info
+            if ignored_sheets:
+                print(
+                    f"Read sheet '{sheet_name}' - {len(ignored_sheets)} "
+                    f"other sheet(s) ignored.",
+                    file=sys.stderr,
+                )
 
         opts = {
             "min_share": args.min_share,
@@ -290,6 +314,8 @@ def main(argv: list[str] | None = None) -> int:
             "imbalance_flag": args.imbalance_flag,
             "missing_flag": args.missing_flag,
             "min_group_size": args.min_group_size,
+            "max_categorical_card": args.max_categorical_card,
+            "max_dimension_groups": args.max_dimension_groups,
         }
         if args.cross:
             parts = [c.strip() for c in args.cross.split(",")]
@@ -336,24 +362,26 @@ def main(argv: list[str] | None = None) -> int:
                 return 2
             print(f"HTML report written to {args.html}", file=sys.stderr)
 
+        if args.csv_out:
+            try:
+                with open(args.csv_out, "w", encoding="utf-8", newline="") as fh:
+                    fh.write(to_csv(result))
+            except OSError as exc:
+                print(f"error: could not write CSV export to {args.csv_out}: {exc}",
+                      file=sys.stderr)
+                return 2
+            print(f"CSV export written to {args.csv_out}", file=sys.stderr)
+
         if args.json:
             provenance = None
             if not args.no_provenance:
+                digests = [] if args.sample else [("dataset_hash", args.csv)]
+                if args.reference:
+                    digests.append(("reference_hash", args.reference))
+                provenance = build_provenance(digests, _resolve_opts(opts), overrides)
                 if args.sample:
-                    # Sample dataset has no filesystem hash; pass an empty
-                    # digests list so provenance records the in-memory origin.
-                    provenance = build_provenance(
-                        [], _resolve_opts(opts), overrides
-                    )
-                    provenance["dataset_hash"] = None
-                    provenance["dataset_hash_note"] = (
-                        "dataset was generated in memory from the built-in sample"
-                    )
-                else:
-                    digests = [("dataset_hash", args.csv)]
-                    if args.reference:
-                        digests.append(("reference_hash", args.reference))
-                    provenance = build_provenance(digests, _resolve_opts(opts), overrides)
+                    provenance["dataset_hash"] = "sha256:" + hashlib.sha256(
+                        build_sample_csv().encode("utf-8")).hexdigest()
             print(to_json(result, provenance=provenance))
         else:
             print(to_terminal(result))
@@ -394,6 +422,31 @@ def main(argv: list[str] | None = None) -> int:
             print("error: --compare can't read both datasets from stdin "
                   "(a stream can only be read once)", file=sys.stderr)
             return 2
+        if (args.proxy_hints_with_a or args.proxy_hints_with_b) and not args.proxy_hints:
+            print("error: --proxy-hints-with-a/-b needs --proxy-hints", file=sys.stderr)
+            return 2
+
+        def _held_out_uses_stdin(specs):
+            return any(
+                path == "-" and sep and column
+                for path, sep, column in (spec.partition("=") for spec in specs or [])
+            )
+
+        if args.csv_a == "-" and _held_out_uses_stdin(args.proxy_hints_with_a):
+            print(
+                "error: csv_a and --proxy-hints-with-a can't both read from stdin "
+                "(a stream can only be read once)",
+                file=sys.stderr,
+            )
+            return 2
+        if args.csv_b == "-" and _held_out_uses_stdin(args.proxy_hints_with_b):
+            print(
+                "error: csv_b and --proxy-hints-with-b can't both read from stdin "
+                "(a stream can only be read once)",
+                file=sys.stderr,
+            )
+            return 2
+
         overrides = _parse_map(args.map)
         opts = {
             "min_share": args.min_share,
@@ -401,6 +454,8 @@ def main(argv: list[str] | None = None) -> int:
             "imbalance_flag": args.imbalance_flag,
             "missing_flag": args.missing_flag,
             "min_group_size": args.min_group_size,
+            "max_categorical_card": args.max_categorical_card,
+            "max_dimension_groups": args.max_dimension_groups,
         }
         df_a = _read_or_exit(args.csv_a)
         df_b = _read_or_exit(args.csv_b)
@@ -425,10 +480,12 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         result = compare(profile_a, profile_b, name_a=args.csv_a, name_b=args.csv_b)
 
-        if args.proxy_hints:
+        if args.proxy_hints or args.proxy_hints_with_a or args.proxy_hints_with_b:
+            held_out_a = _build_held_out(args.proxy_hints_with_a, df_a)
+            held_out_b = _build_held_out(args.proxy_hints_with_b, df_b)
             try:
-                result["proxy_hints_a"] = proxy_hints(df_a, profile_a["dimensions"])
-                result["proxy_hints_b"] = proxy_hints(df_b, profile_b["dimensions"])
+                result["proxy_hints_a"] = proxy_hints(df_a, profile_a["dimensions"], held_out=held_out_a)
+                result["proxy_hints_b"] = proxy_hints(df_b, profile_b["dimensions"], held_out=held_out_b)
             except RuntimeError as exc:
                 print(f"error: {exc}", file=sys.stderr)
                 return 2
@@ -443,23 +500,16 @@ def main(argv: list[str] | None = None) -> int:
                       file=sys.stderr)
                 return 2
             print(f"HTML report written to {args.html}", file=sys.stderr)
-        if args.csv_path:
-            import os
-            csv_path = args.csv_path
-            if os.path.exists(csv_path):
-                print(
-                    f"warning: {csv_path} already exists, overwriting",
-                    file=sys.stderr,
-                )
-            csv_content = compare_to_csv(result)
+
+        if args.csv_out:
             try:
-                with open(csv_path, "w", encoding="utf-8") as fh:
-                    fh.write(csv_content)
+                with open(args.csv_out, "w", encoding="utf-8", newline="") as fh:
+                    fh.write(compare_to_csv(result))
             except OSError as exc:
-                print(f"error: could not write CSV report to {csv_path}: {exc}",
+                print(f"error: could not write CSV export to {args.csv_out}: {exc}",
                       file=sys.stderr)
                 return 2
-            print(f"CSV report written to {csv_path}", file=sys.stderr)
+            print(f"CSV export written to {args.csv_out}", file=sys.stderr)
         if args.json:
             provenance = None
             if not args.no_provenance:

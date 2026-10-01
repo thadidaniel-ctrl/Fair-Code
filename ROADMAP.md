@@ -153,9 +153,9 @@ Goal: grow to 15+ contributors with quality-controlled contributions.
 
 ---
 
-## Phase 5 - Fairness Metrics and Notebooks 🔄 In Progress
+## Phase 5 - Fairness Metrics and Notebooks ✅
 
-**Status: Cross-domain benchmark harness shipped - dashboards and notebooks continuing**
+**Status: Complete - cross-domain benchmark harness and its interactive results dashboard both shipped**
 
 Go deeper on measurement - fairness dashboards, interactive notebooks, and statistical tools for auditors.
 
@@ -167,7 +167,7 @@ Go deeper on measurement - fairness dashboards, interactive notebooks, and stati
 - [x] Cross-domain benchmark harness - declarative `audit.yaml` manifests (`faircode/MANIFEST_SPEC.md`) + `faircode benchmark`: 5 strategies x 3 model families x 6 fairness metrics (bootstrap CI + permutation p-value) + accuracy/AUC/F1, written to `results/`
 - [x] Intersectional bias notebook (auditing across multiple protected attributes simultaneously)
 - [x] Statistical significance testing for fairness gaps
-- [ ] Fairness dashboard for the benchmark harness results (interactive `results/` explorer, mirroring the Open Dataset Profiler's web/CLI split)
+- [x] Fairness dashboard for the benchmark harness results (interactive `results/` explorer, mirroring the Open Dataset Profiler's web/CLI split) - [benchmark.html](benchmark.html)
 
 ---
 

@@ -190,6 +190,7 @@ Fair-Code/
 │   ├── benchmark.py                     #   orchestrator - manifests → strategies → metrics → tables
 │   ├── figures.py                       #   renders results_fairness.csv → figures/*.png (300 dpi)
 │   ├── cli.py                           #   `faircode profile` / `compare` / `benchmark` entry point
+│   ├── sample_data.py                   #   bundled demo dataset for `--sample`, shared with the web profiler
 │   ├── mcp_server.py                    #   `faircode-mcp` entry point - 6 MCP tools (SPEC.md section 11)
 │   ├── provenance.py                    #   dataset SHA-256 + resolved-params block for --json/--html exports
 │   ├── _explainers/                     #   generated mirror of explainers/*.md, for the MCP tools
@@ -197,6 +198,7 @@ Fair-Code/
 ├── tests/
 │   ├── fixtures/                        #   sample datasets for loader/edge-case tests
 │   ├── test_benchmark.py                # end-to-end benchmark harness tests
+│   ├── test_benchmark_dashboard.py      #   benchmark.html's client-side results explorer
 │   ├── test_build_explainers.py         #   explainer HTML/JS generation
 │   ├── test_check_generated_files_current.py  #   validates the generated-files-current check itself
 │   ├── test_cli.py                      #   CLI subcommand tests
@@ -337,7 +339,9 @@ Fair-Code/
 │   ├── og/                              #   dark-theme OG share images, per explainer
 │   ├── og-light/                        #   light-theme counterparts
 │   ├── profiler-engine.js, profiler-ui.js, profiler-compare.js, profiler.css   # client-side profiler
+│   ├── benchmark-dashboard.js, benchmark.css   # client-side benchmark results dashboard
 │   └── explainers-data.json, explainers-data.js, explainers-ui.js, explainers.css   # client-side explainer index
+├── benchmark.html                       # Benchmark Results Dashboard - interactive results/ explorer
 ├── explainer.html                       # static ?slug= redirect shim -> explainers/<slug>.html (see DEAD-FILE-AUDIT.md)
 ├── index.html                           # live at thefaircode.xyz
 ├── profiler.html                        # Open Dataset Profiler - client-side web tool
@@ -977,6 +981,7 @@ pip install -e ".[excel]"                          # + .xlsx support (openpyxl)
 pip install -e ".[parquet]"                        # + .parquet support (pyarrow)
 pip install -e ".[proxy]"                           # + chi-squared proxy hints (scipy)
 pip install -e ".[mcp]"                             # + MCP server for agent tool-calling
+faircode profile --sample                          # no file? profile a bundled sample dataset
 faircode profile "Insurance Denial/insurance.csv"  # terminal report
 faircode profile data.tsv                          # tab-separated exports work too
 faircode profile data.xlsx                         # Excel workbooks work too
@@ -985,10 +990,12 @@ faircode profile data.parquet                      # Parquet files work too
 faircode profile data.csv --json                   # machine-readable
 cat data.csv | faircode profile -                  # pipe CSV/TSV in via stdin
 faircode profile data.csv --html report.html       # standalone HTML report
+faircode profile data.csv --csv groups.csv         # flat, one-row-per-group CSV export
 faircode profile data.csv --fail-under 70          # fail CI if score is below 70
 faircode profile data.csv --min-group-size 50      # warn on subgroups under 50 rows
 faircode compare train.csv prod.csv                # representation drift, A → B (PSI)
 faircode compare train.csv prod.csv --html drift.html  # standalone HTML drift report
+faircode compare train.csv prod.csv --csv drift.csv     # flat CSV export (groups + summary)
 faircode compare train.csv prod.csv --map gndr=sex # --map/threshold flags apply to both sides
 faircode compare train.csv prod.csv --fail-on-drift # fail CI if any dimension drifted
 faircode compare train.csv prod.csv --proxy-hints  # chi-squared proxy hints for both datasets
@@ -1075,6 +1082,13 @@ Writes `results_fairness.csv`, `results_performance.csv`, `summary.csv`, and one
 the CSVs, so re-plotting a different metric never requires re-running a model). One code path, same
 seed, same splits, same metric definitions, for every domain - that uniformity is what makes "we
 measured every audit identically" a true statement rather than an assertion.
+
+**Layer 3 - the dashboard (`benchmark.html`).** An interactive, client-side explorer for
+`results_fairness.csv`/`results_performance.csv` - filter by audit, strategy, model, protected
+attribute, and metric; sort any column; chart every audit x strategy x model combination for a
+chosen metric + protected attribute. It fetches the bundled CSVs from this same site by default, or
+accepts a drag-and-drop of your own `faircode benchmark` export - same client-side, nothing-uploaded
+model as the Profiler, reusing its CSV parser (`assets/profiler-engine.js`).
 
 ---
 

@@ -41,6 +41,20 @@
     if (def !== undefined) input.placeholder = String(def);
   });
 
+  // #740: one delegated listener survives every re-render of resultsEl's
+  // innerHTML, instead of re-binding per drift-card on each comparison run.
+  resultsEl.addEventListener('click', function (e) {
+    var btn = e.target.closest && e.target.closest('.dim-more-btn');
+    if (!btn || !resultsEl.contains(btn)) return;
+    var extra = btn.previousElementSibling;
+    var expanded = btn.getAttribute('aria-expanded') === 'true';
+    extra.hidden = expanded;
+    btn.setAttribute('aria-expanded', String(!expanded));
+    btn.textContent = expanded
+      ? 'Show ' + extra.children.length + ' more group' + (extra.children.length === 1 ? '' : 's')
+      : 'Show fewer groups';
+  });
+
   // Kinds a column can be manually mapped to, plus Auto / Not-demographic.
   // Mirrors assets/profiler-ui.js's MAP_OPTIONS (issue #62's panel, ported
   // here for the compare view).
@@ -430,7 +444,7 @@
     });
     if (maxShare <= 0) maxShare = 1;
 
-    var rows = cd.groups.slice(0, DISPLAY_GROUPS).map(function (g) {
+    function driftRow(g) {
       var cls = g.status === 'disappeared' ? ' gone' : g.status === 'appeared' ? ' new' : '';
       var wa = (g.share_a / maxShare) * 100;
       var wb = (g.share_b / maxShare) * 100;
@@ -445,10 +459,15 @@
         '<span class="drift-row-delta">' + pct(g.share_a) + ' → ' + pct(g.share_b) +
           ' <span class="' + dCls + '">(' + signed(deltaPP) + 'pp)</span></span>' +
         '</div>';
-    }).join('');
-
-    var more = cd.groups.length > DISPLAY_GROUPS
-      ? '<div class="dim-more">… and ' + (cd.groups.length - DISPLAY_GROUPS) + ' more groups</div>'
+    }
+    var rows = cd.groups.slice(0, DISPLAY_GROUPS).map(driftRow).join('');
+    var extraGroups = cd.groups.slice(DISPLAY_GROUPS);
+    // #740: rendered up front (just hidden) so the expand toggle in the
+    // resultsEl-level delegated click handler below is a plain attribute flip.
+    var more = extraGroups.length
+      ? '<div class="dim-extra-groups" hidden>' + extraGroups.map(driftRow).join('') + '</div>' +
+        '<button type="button" class="dim-more-btn" aria-expanded="false">Show ' +
+          extraGroups.length + ' more group' + (extraGroups.length === 1 ? '' : 's') + '</button>'
       : '';
 
     return '<div class="drift-card">' + head + rows + more + '</div>';
@@ -707,12 +726,17 @@
   }
 
   // ── Init ────────────────────────────────────────────────────────────────
-  wireSlot('A', dropA, fileA, nameAEl);
-  wireSlot('B', dropB, fileB, nameBEl);
-  sampleBtn.addEventListener('click', function () {
+  function loadSampleComparison() {
     setSlot('A', E.parseCSV(buildSample('A')), 'sample-baseline.csv', dropA, nameAEl);
     setSlot('B', E.parseCSV(buildSample('B')), 'sample-current.csv', dropB, nameBEl);
-  });
+  }
+
+  wireSlot('A', dropA, fileA, nameAEl);
+  wireSlot('B', dropB, fileB, nameBEl);
+  sampleBtn.addEventListener('click', loadSampleComparison);
+  if (new URLSearchParams(window.location.search).get('demo') === 'compare') {
+    loadSampleComparison();
+  }
   downloadHtmlBtn.addEventListener('click', downloadCompareHtmlReport);
   copyJsonBtn.addEventListener('click', copyCompareResultAsJSON);
 })();

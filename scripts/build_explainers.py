@@ -615,7 +615,8 @@ def _git_first_commit(relpath: str) -> str | None:
 def build_sitemap(entries):
     # (public URL, repo file whose commit date drives <lastmod>)
     items = [(f"{SITE_URL}/", "index.html"),
-             (f"{SITE_URL}/profiler.html", "profiler.html")]
+             (f"{SITE_URL}/profiler.html", "profiler.html"),
+             (f"{SITE_URL}/benchmark.html", "benchmark.html")]
     items += [(f"{SITE_URL}/explainers/{e['slug']}.html",
                f"explainers/{e['slug']}.md") for e in entries]
     rows = []

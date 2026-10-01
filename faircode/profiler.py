@@ -12,7 +12,7 @@ import re
 
 import pandas as pd
 
-from .detect import VALID_KINDS, detect_columns
+from .detect import MAX_CATEGORICAL_CARD, VALID_KINDS, detect_columns
 
 # ── Defaults (SPEC section 7) ───────────────────────────────────────────────
 MIN_SHARE_THRESHOLD = 0.05
@@ -60,6 +60,8 @@ _DEFAULT_OPTS = {
     "missing_flag": MISSING_FLAG,
     "reference_flag": REFERENCE_DEVIATION_FLAG,
     "min_group_size": MIN_GROUP_SIZE,  # warn when a subgroup has fewer than N rows
+    "max_categorical_card": MAX_CATEGORICAL_CARD,
+    "max_dimension_groups": MAX_DIMENSION_GROUPS,
     "cross": None,       # [colA, colB] to force the intersection pair (SPEC 4)
     "reference": None,   # {column: {group: expected_share}} baseline (SPEC 8)
 }
@@ -83,6 +85,12 @@ def _validate_opts(o: dict) -> None:
     min_group_size = o.get("min_group_size")
     if min_group_size is not None and min_group_size < 1:
         raise ValueError(f"min_group_size must be >= 1, got {min_group_size!r}")
+    max_categorical_card = o.get("max_categorical_card")
+    if max_categorical_card is not None and max_categorical_card < 2:
+        raise ValueError(f"max_categorical_card must be >= 2, got {max_categorical_card!r}")
+    max_dimension_groups = o.get("max_dimension_groups")
+    if max_dimension_groups is not None and max_dimension_groups < 1:
+        raise ValueError(f"max_dimension_groups must be >= 1, got {max_dimension_groups!r}")
 
 
 def _resolve_opts(opts) -> dict:
@@ -481,7 +489,7 @@ def profile(df: pd.DataFrame, overrides=None, opts=None) -> dict:
     """
     overrides = overrides or {}
     o = _resolve_opts(opts)
-    detected = detect_columns(df, overrides)
+    detected = detect_columns(df, overrides, max_categorical_card=o["max_categorical_card"])
     dimensions = [_dimension(df, d["name"], d["kind"], o["min_share"], o["min_group_size"])
                   for d in detected]
     # Drop identifier/date-like columns that exploded into many groups; geography
@@ -490,7 +498,7 @@ def profile(df: pd.DataFrame, overrides=None, opts=None) -> dict:
     forced = {name for name, kind in overrides.items() if kind in VALID_KINDS}
     dimensions = [d for d in dimensions
                   if d["kind"] == "geography" or d["name"] in forced
-                  or d["n_groups"] <= MAX_DIMENSION_GROUPS]
+                  or d["n_groups"] <= o["max_dimension_groups"]]
     kept_names = {d["name"] for d in dimensions}
     detected = [d for d in detected if d["name"] in kept_names]
     if o["cross"]:

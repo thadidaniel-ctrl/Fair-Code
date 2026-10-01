@@ -115,8 +115,14 @@ An optional pass (`faircode profile/compare … --proxy-hints`) runs a chi-squar
 (`scipy.stats.chi2_contingency`) over every pair of detected dimensions and reports pairs with
 `p < 0.05`, each with its p-value and Cramér's V effect size, most-significant first. It surfaces
 "this column may be a proxy for that protected attribute" - the same pattern the bias audits use.
-This is **Python/CLI-only** (needs the optional `scipy` extra) and never affects the score, so it is
-intentionally **not** part of the JS engine; the two engines stay bit-for-bit identical without it.
+The Python/CLI path needs the optional `scipy` extra. It never affects the score, so it is
+intentionally **not** part of `profile()`/`compare()`'s bit-for-bit parity contract between the two
+engines - but as of #738, the web profiler has its own opt-in JS port of the same chi-squared test
+(`FairCodeProfiler.proxyHints()` in `assets/profiler-engine.js`, wired to a "Check for proxy columns"
+button below a profile's results), so this is no longer a CLI-only capability - it's just a
+separate, non-parity-tested module in each engine, exercised by cross-checking known-correlated and
+known-unrelated fixtures against `scipy.stats.chi2_contingency` (`tests/test_js_parity.py`) rather
+than by the bit-for-bit parity assertion the rest of this file describes.
 
 **Limitation - a dropped column is invisible by construction.** `proxy_hints()` only tests pairs
 drawn from `dimensions`, the columns actually present in the profiled data. If a protected attribute
@@ -131,7 +137,10 @@ and against every other held-out column, without needing it back in the profiled
 `PATH`'s rows must align 1:1 (same order) with the profiled dataset - there is no join key, so a
 mismatched row count is a hard error rather than a silently wrong result. Programmatically,
 `proxy_hints(df, dimensions, held_out={"race": pd.Series(...)})` does the same thing directly.
-Currently `profile`-only; `compare`'s `--proxy-hints` does not accept `--proxy-hints-with`.
+`compare`'s `--proxy-hints` accepts the same idea per side - `--proxy-hints-with-a PATH=COLUMN`
+and `--proxy-hints-with-b PATH=COLUMN` (each repeatable), aligned to `csv_a`/`csv_b` respectively -
+added in #737. The MCP `compare_datasets` tool does not yet expose a held-out-column equivalent
+(only the standalone `proxy_hints` tool's `held_out_with` does).
 
 ---
 
@@ -224,7 +233,8 @@ how many groups were omitted; the structured result remains complete.
 
 The flagging thresholds are overridable per run without editing source: `profile(df, opts={...})`
 in Python, `profile(table, overrides, opts)` in JS, and `--min-share` / `--intersection-floor` /
-`--imbalance-flag` / `--missing-flag` / `--min-group-size` on the CLI. Omitted knobs fall back to the defaults below.
+`--imbalance-flag` / `--missing-flag` / `--min-group-size` / `--max-categorical-card` /
+`--max-dimension-groups` on the CLI. Omitted knobs fall back to the defaults below.
 
 | Constant               | Default | Used by                          |
 |------------------------|:-------:|----------------------------------|
@@ -232,6 +242,7 @@ in Python, `profile(table, overrides, opts)` in JS, and `--min-share` / `--inter
 | `MIN_GROUP_SIZE`       | 100     | `small_group` unreliable-metric flag |
 | `INTERSECTION_FLOOR`   | 0.01    | near-empty intersection cells    |
 | `MAX_CATEGORICAL_CARD` | 20      | generic-categorical detection    |
+| `MAX_DIMENSION_GROUPS` | 50      | identifier/date-like dimension drop |
 | `IMBALANCE_FLAG`       | 3.0     | imbalance-ratio flag             |
 | `MISSING_FLAG`         | 0.05    | missing-data flag                |
 | `AGE_BANDS`            | 0,18,30,45,60,75 | age band edges          |

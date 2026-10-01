@@ -228,6 +228,33 @@ def test_compare_datasets_unknown_override_column_raises(tmp_path):
         _compare_datasets_impl(str(path_a), str(path_b), overrides={"nope": "sex"})
 
 
+def test_profile_and_compare_thread_max_categorical_card_and_max_dimension_groups(tmp_path):
+    # Same cases as the profiler's own tunable tests: 30 distinct codes sit
+    # outside the default generic-categorical window, 60 "ethnicity" groups
+    # sit past the default identifier/date-like cutoff (#759).
+    card = tmp_path / "card.csv"
+    card.write_text("occupation_code\n" + "".join(f"occ_{i % 30}\n" for i in range(300)),
+                    encoding="utf-8")
+    groups = tmp_path / "groups.csv"
+    groups.write_text("ethnicity\n" + "".join(f"group_{i % 60}\n" for i in range(600)),
+                      encoding="utf-8")
+
+    assert _profile_dataset_impl(str(card))["dimensions"] == []
+    result = _profile_dataset_impl(str(card), max_categorical_card=30)
+    assert [d["name"] for d in result["dimensions"]] == ["occupation_code"]
+    assert result["provenance"]["params"]["max_categorical_card"] == 30
+
+    assert _profile_dataset_impl(str(groups))["dimensions"] == []
+    result = _profile_dataset_impl(str(groups), max_dimension_groups=60)
+    assert [d["name"] for d in result["dimensions"]] == ["ethnicity"]
+
+    assert _compare_datasets_impl(str(card), str(card))["dimensions"] == []
+    result = _compare_datasets_impl(str(card), str(card), max_categorical_card=30)
+    assert [d["name"] for d in result["dimensions"]] == ["occupation_code"]
+    result = _compare_datasets_impl(str(groups), str(groups), max_dimension_groups=60)
+    assert [d["name"] for d in result["dimensions"]] == ["ethnicity"]
+
+
 @requires_openpyxl
 def test_compare_datasets_reports_ignored_sheets_for_both_files(tmp_path):
     path_a = tmp_path / "a.xlsx"

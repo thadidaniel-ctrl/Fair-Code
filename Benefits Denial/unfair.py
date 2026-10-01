@@ -27,9 +27,10 @@ from faircode.significance import significance_report, intersectional_report
 #   hours.per.week → Women average 36.4 hrs/wk vs 42.4 for men
 #                   due to caregiving burdens, not productivity.
 #                   penalizing low hours penalises gender roles.
-#   occupation    → Racial occupational segregation: Black and
-#                   Native applicants are in high-skill roles
-#                   at ~15% vs 26% for White applicants.
+#   occupation    → Racial occupational segregation: Black applicants
+#                   are in high-skill roles at ~15.5% (about half of
+#                   White's 26.2%), while Native applicants are at
+#                   20.3% (~77% of White's rate).
 #                   Occupation encodes race via labour market bias.
 # ============================================================
 

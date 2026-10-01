@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fair Code - Benchmark Results Dashboard</title>
+<meta name="description" content="Explore the cross-domain benchmark harness's results interactively: filter by audit, mitigation strategy, model, protected attribute, and fairness metric. Runs entirely in your browser; nothing is uploaded.">
+<meta name="author" content="Yash Kewlani">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta property="og:site_name" content="Fair Code">
+<meta property="og:locale" content="en_US">
+<meta property="og:title" content="Fair Code - Benchmark Results Dashboard">
+<meta property="og:description" content="Filter and chart the seven-audit benchmark harness's fairness and performance results - client-side, no upload.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://www.thefaircode.xyz/assets/og/home.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:alt" content="Fair Code - Benchmark Results Dashboard">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Fair Code - Benchmark Results Dashboard">
+<meta name="twitter:description" content="Filter and chart the seven-audit benchmark harness's results - instantly, privately, in your browser.">
+<meta name="twitter:image" content="https://www.thefaircode.xyz/assets/og/home.png">
+<link rel="canonical" href="https://www.thefaircode.xyz/benchmark.html">
+<meta property="og:url" content="https://www.thefaircode.xyz/benchmark.html">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      "name": "Fair Code - Benchmark Results Dashboard",
+      "url": "https://www.thefaircode.xyz/benchmark.html",
+      "description": "Explore the cross-domain benchmark harness's results interactively: filter by audit, mitigation strategy, model, protected attribute, and fairness metric. Runs entirely in your browser; nothing is uploaded.",
+      "applicationCategory": "DeveloperApplication",
+      "operatingSystem": "Any (runs in a web browser)",
+      "browserRequirements": "Requires JavaScript",
+      "isAccessibleForFree": true,
+      "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
+      "author": {"@type": "Person", "name": "Yash Kewlani", "url": "https://github.com/yakew7"},
+      "creator": {"@type": "Organization", "name": "Fair Code", "url": "https://www.thefaircode.xyz/"}
+    },
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "Fair Code", "item": "https://www.thefaircode.xyz/"},
+        {"@type": "ListItem", "position": 2, "name": "Benchmark Results Dashboard", "item": "https://www.thefaircode.xyz/benchmark.html"}
+      ]
+    }
+  ]
+}
+</script>
+<link rel="icon" href="/assets/icons/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/assets/icons/favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='32' y='18' width='13' height='64' fill='%2314171A'/><rect x='32' y='18' width='42' height='13' fill='%2314171A'/><rect x='32' y='44' width='36' height='13' fill='%234F7A5B'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<script>
+  (function () {
+    const systemPref = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    var saved = localStorage.getItem('fc-theme') || systemPref;
+    document.documentElement.setAttribute('data-theme', saved);
+  })();
+</script>
+<style>
+  /* "The Audit Ledger" design tokens - shared with index.html / profiler.html */
+  :root {
+    --bg: #f4f1e8;
+    --surface: #ebe7d9;
+    --border: #d9d3c0;
+    --border2: #bdb59c;
+    --accent: #a63a22;
+    --accent3: #2f6b4f;
+    --text: #36321f;
+    --muted: #7d7459;
+    --white: #1d1910;
+    --bias-track-bg: #e2dcc9;
+    --warn: #7a5b17;
+
+    --serif: 'Instrument Serif', 'Iowan Old Style', Georgia, serif;
+    --sans: 'Archivo', 'Helvetica Neue', sans-serif;
+    --mono: 'IBM Plex Mono', 'SF Mono', monospace;
+  }
+  html[data-theme="dark"] {
+    --bg: #15130d;
+    --surface: #1c1912;
+    --border: #2e2a1f;
+    --border2: #443e2d;
+    --accent: #cf6f49;
+    --accent3: #79b294;
+    --text: #cfc7b0;
+    --muted: #8d8367;
+    --white: #f1e9d4;
+    --bias-track-bg: #242013;
+    --warn: #d4ac4a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    transition: background 0.3s, color 0.3s;
+  }
+  a { color: inherit; }
+  ::selection { background: var(--accent); color: var(--bg); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px;
+    padding: 0; margin: -1px; overflow: hidden;
+    clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+</style>
+<link rel="stylesheet" href="assets/profiler.css">
+<link rel="stylesheet" href="assets/benchmark.css">
+<script>
+  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+</script>
+<script defer src="/_vercel/insights/script.js"></script>
+<script>
+  window.si = window.si || function () { (window.siq = window.siq || []).push(arguments); };
+</script>
+<script defer src="/_vercel/speed-insights/script.js"></script>
+<script defer src="https://cloud.umami.is/script.js" data-website-id="84e0aebf-44e1-466e-b2c6-62f75e1c36c7"></script>
+</head>
+<body class="profiler-page">
+  <main class="profiler-shell">
+    <div class="profiler-topbar">
+      <a class="profiler-back" href="index.html">← Back to Fair Code</a>
+      <div class="profiler-topbar-actions">
+        <a class="profiler-source" href="https://github.com/yakew7/Fair-Code" target="_blank" rel="noopener noreferrer">View source on GitHub</a>
+        <button class="profiler-theme-toggle" id="themeToggle" aria-label="Toggle theme" aria-pressed="false">☀</button>
+      </div>
+    </div>
+
+    <section class="profiler-hero">
+      <div class="profiler-kicker">Research Tools</div>
+      <h1 class="profiler-headline">Benchmark Results Dashboard</h1>
+      <p class="profiler-lede">
+        The <a href="https://github.com/yakew7/Fair-Code/tree/main/results">benchmark harness</a> runs
+        five mitigation strategies across three model families on all seven audits, scored on six
+        fairness metrics with a bootstrap confidence interval and a permutation-test p-value. This page
+        explores those same numbers interactively - filter by audit, strategy, model, protected
+        attribute, and metric instead of grepping CSVs.
+      </p>
+      <p class="profiler-privacy">
+        <span class="lock" aria-hidden="true">🔒</span> Everything below runs locally in your browser -
+        the bundled CSVs are fetched from this same site, and a dropped file never leaves your machine.
+      </p>
+    </section>
+
+    <div class="bench-load-row">
+      <button class="bench-load-btn" id="loadBundledBtn" type="button">Load bundled benchmark results</button>
+      <span class="bench-status" id="benchStatus"></span>
+    </div>
+    <p class="profiler-error" id="benchError" role="alert" hidden></p>
+
+    <section class="dropzone" id="benchDropzone" tabindex="0" role="button"
+             aria-label="Or drop your own results_fairness.csv / results_performance.csv export"
+             aria-describedby="benchDropzoneHint">
+      <input type="file" id="benchFileInput" accept=".csv,text/csv" multiple hidden>
+      <div class="dropzone-inner">
+        <div class="dropzone-icon" aria-hidden="true">⊕</div>
+        <p class="dropzone-title">Or drop your own <code>results_fairness.csv</code> / <code>results_performance.csv</code>, or <span class="link">browse</span></p>
+        <p class="dropzone-hint" id="benchDropzoneHint">Any export produced by <code>faircode benchmark</code> works -
+        the dashboard detects which file is which from its columns.</p>
+      </div>
+    </section>
+
+    <section class="results" id="benchResults" hidden>
+      <div class="bench-tabs" role="tablist">
+        <button type="button" class="bench-tab" data-tab="fairness" role="tab" aria-selected="true">Fairness metrics</button>
+        <button type="button" class="bench-tab" data-tab="performance" role="tab" aria-selected="false">Model performance</button>
+      </div>
+
+      <div class="bench-filters" id="benchFilters"></div>
+      <label class="bench-sig-toggle">
+        <input type="checkbox" id="significantOnlyInput"> Significant results only (p &lt; 0.05)
+      </label>
+      <p class="bench-summary" id="benchSummary"></p>
+
+      <div class="bench-chart-block" id="benchChartBlock">
+        <h3 class="section-title">Chart</h3>
+        <p class="section-note" id="benchChartNote"></p>
+        <div id="benchChart" hidden></div>
+      </div>
+
+      <div class="bench-table-wrap" id="benchTable"></div>
+    </section>
+
+    <footer class="profiler-foot">
+      <p>This is the interactive counterpart of <code>results/</code>. Same CSVs, same numbers - see
+      <code>faircode benchmark --help</code> to regenerate them, or browse the raw files and
+      figures in <a href="https://github.com/yakew7/Fair-Code/tree/main/results">results/</a> on GitHub.
+      This dashboard is <strong>diagnostic</strong>: it explores committed results; it does not run
+      the benchmark itself.</p>
+    </footer>
+  </main>
+
+  <script src="assets/profiler-engine.js"></script>
+  <script src="assets/benchmark-dashboard.js"></script>
+  <script>
+    (function () {
+      var toggle = document.getElementById('themeToggle');
+      var html = document.documentElement;
+      const systemPref = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      function sync() {
+        var cur = html.getAttribute('data-theme') || systemPref;
+        toggle.textContent = cur === 'light' ? '☾' : '☀';
+        toggle.setAttribute('aria-label', cur === 'light' ? 'Switch to dark mode' : 'Switch to light mode');
+        toggle.setAttribute('aria-pressed', cur === 'dark' ? 'true' : 'false');
+      }
+      sync();
+      toggle.addEventListener('click', function () {
+        var next = (html.getAttribute('data-theme') || systemPref) === 'dark' ? 'light' : 'dark';
+        html.setAttribute('data-theme', next);
+        localStorage.setItem('fc-theme', next);
+        sync();
+      });
+    })();
+  </script>
+</body>
+</html>

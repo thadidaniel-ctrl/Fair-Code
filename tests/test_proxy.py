@@ -3,6 +3,8 @@
 Run from the repo root:  pytest tests/ -q
 """
 
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
@@ -10,6 +12,15 @@ from faircode import profile
 from faircode.proxy import proxy_hints
 
 pytest.importorskip("scipy", reason="proxy hints need the optional scipy extra")
+
+
+def test_benefits_denial_native_proxy_summary_is_not_stale():
+    # Regression test for #733: the top-of-file proxy summary must keep
+    # Native applicants separate from Black applicants, with Native's 20.3%
+    # rate preserved instead of the stale ~15% lumping that appears elsewhere.
+    source = (Path(__file__).resolve().parents[1] / "Benefits Denial" / "unfair.py").read_text(encoding="utf-8")
+    assert "Native applicants are at\n#                   20.3% (~77% of White's rate)." in source
+    assert "Native applicants are at\n#                   ~15.5%" not in source
 
 
 def test_perfect_proxy_is_flagged():

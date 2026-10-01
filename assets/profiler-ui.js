@@ -31,6 +31,7 @@
   var referenceClearBtn = document.getElementById('referenceClearBtn');
   var referenceInput = document.getElementById('referenceInput');
   var referenceStatus = document.getElementById('referenceStatus');
+  var proxyHintsBtn = document.getElementById('proxyHintsBtn');
   var thresholdControls = document.getElementById('thresholdControls');
   var thresholdInputs = thresholdControls ?
     Array.prototype.slice.call(thresholdControls.querySelectorAll('[data-opt]')) : [];
@@ -111,6 +112,7 @@
   });
   downloadHtmlBtn.addEventListener('click', downloadHtmlReport);
   copyJsonBtn.addEventListener('click', copyResultAsJSON);
+  proxyHintsBtn.addEventListener('click', renderProxyHints);
 
   function readFile(file) {
     var okExt = /\.(csv|tsv|json|xlsx)$/i.test(file.name);
@@ -269,6 +271,14 @@
     // Intersections
     renderIntersections(r);
 
+    // Proxy hints (issue #738): opt-in, computed on demand, not on every
+    // render - the chi-squared pass over every dimension pair is skippable
+    // work most visits never need.
+    var proxyBlock = document.getElementById('proxyHintsBlock');
+    var proxyResults = document.getElementById('proxyHintsResults');
+    proxyResults.innerHTML = '';
+    proxyBlock.hidden = r.dimensions.length < 2;
+
     results.hidden = false;
     if (scroll) {
       results.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' });
@@ -290,7 +300,7 @@
       '<span class="dim-score">' + d.dimension_score + '/100</span></div>';
 
     var maxShare = d.groups.length ? d.groups[0].share : 1;
-    var bars = d.groups.slice(0, DISPLAY_GROUPS).map(function (g) {
+    function barRow(g) {
       var under = d.under_represented.indexOf(g.label) !== -1 ? ' under' : '';
       var w = maxShare > 0 ? (g.share / maxShare) * 100 : 0;
       var ci = (g.ci_low != null && g.ci_high != null)
@@ -306,10 +316,15 @@
         '<span class="bar-pct">' + pct(g.share) + ' (' + g.count.toLocaleString() + ')</span>' +
         ci + small +
         '</div>';
-    }).join('');
-
-    var more = d.groups.length > DISPLAY_GROUPS
-      ? '<div class="dim-more">… and ' + (d.groups.length - DISPLAY_GROUPS) + ' more groups</div>'
+    }
+    var bars = d.groups.slice(0, DISPLAY_GROUPS).map(barRow).join('');
+    var extraGroups = d.groups.slice(DISPLAY_GROUPS);
+    // #740: the extra groups are rendered up front (just hidden), so toggling
+    // is a plain attribute flip - no re-render, no re-fetching group data.
+    var more = extraGroups.length
+      ? '<div class="dim-extra-groups" hidden>' + extraGroups.map(barRow).join('') + '</div>' +
+        '<button type="button" class="dim-more-btn" aria-expanded="false">Show ' +
+          extraGroups.length + ' more group' + (extraGroups.length === 1 ? '' : 's') + '</button>'
       : '';
 
     var meta = [];
@@ -320,7 +335,7 @@
 
     var ref = '';
     if (d.reference) {
-      var refRows = d.reference.groups.slice(0, DISPLAY_GROUPS).map(function (g) {
+      function refRow(g) {
         var dCls = g.delta < 0 ? 'under' : g.delta > 0 ? 'over' : '';
         return '<div class="ref-row">' +
           '<span class="ref-label" title="' + esc(g.label) + '">' + esc(g.label) + '</span>' +
@@ -328,13 +343,32 @@
           '<span class="ref-delta ' + dCls + '">' +
             (g.delta >= 0 ? '+' : '') + (g.delta * 100).toFixed(1) + ' pp</span>' +
           '</div>';
-      }).join('');
+      }
+      var refRows = d.reference.groups.slice(0, DISPLAY_GROUPS).map(refRow).join('');
+      var extraRefGroups = d.reference.groups.slice(DISPLAY_GROUPS);
+      var refMore = extraRefGroups.length
+        ? '<div class="dim-extra-groups" hidden>' + extraRefGroups.map(refRow).join('') + '</div>' +
+          '<button type="button" class="dim-more-btn" aria-expanded="false">Show ' +
+            extraRefGroups.length + ' more group' + (extraRefGroups.length === 1 ? '' : 's') + '</button>'
+        : '';
       ref = '<div class="dim-reference"><div class="dim-reference-head">vs reference · ' +
-        'deviation ' + pct(d.reference.deviation) + '</div>' + refRows + '</div>';
+        'deviation ' + pct(d.reference.deviation) + '</div>' + refRows + refMore + '</div>';
     }
 
     card.innerHTML = head + bars + more +
       (meta.length ? '<div class="dim-meta">' + meta.join('  ·  ') + '</div>' : '') + ref;
+
+    Array.prototype.forEach.call(card.querySelectorAll('.dim-more-btn'), function (btn) {
+      var extra = btn.previousElementSibling;
+      var shownLabel = btn.textContent;
+      var hiddenLabel = 'Show fewer groups';
+      btn.addEventListener('click', function () {
+        var expanded = btn.getAttribute('aria-expanded') === 'true';
+        extra.hidden = expanded;
+        btn.setAttribute('aria-expanded', String(!expanded));
+        btn.textContent = expanded ? shownLabel : hiddenLabel;
+      });
+    });
     return card;
   }
 
@@ -364,6 +398,31 @@
       wrap.appendChild(el);
     });
     host.appendChild(wrap);
+  }
+
+  // ── Proxy-hint detection (issue #738) ────────────────────────────────────
+  // Opt-in: computed on click, not on every render, since the chi-squared
+  // pass over every dimension pair is work most visits never ask for.
+  function renderProxyHints() {
+    if (!currentTable || !currentResult) return;
+    var host = document.getElementById('proxyHintsResults');
+    host.innerHTML = '';
+    var hints = E.proxyHints(currentTable, currentResult.dimensions);
+    if (!hints.length) {
+      host.innerHTML = '<p class="section-note">No column pairs are significantly associated (p &lt; 0.05).</p>';
+      return;
+    }
+    var list = document.createElement('div');
+    list.className = 'proxy-hint-list';
+    hints.forEach(function (h) {
+      var row = document.createElement('div');
+      row.className = 'proxy-hint-row';
+      row.innerHTML = '<span class="proxy-hint-pair">' + esc(h.a) + ' × ' + esc(h.b) + '</span>' +
+        '<span class="proxy-hint-stats">p ' + h.p_value.toExponential(2) +
+        ' · Cramer’s V ' + h.cramers_v.toFixed(4) + '</span>';
+      list.appendChild(row);
+    });
+    host.appendChild(list);
   }
 
   // ── Column mapping (manual override, issue #62) ─────────────────────────
@@ -793,9 +852,11 @@
     }
   }
 
-  // Shareable demo link: profiler.html?demo loads the sample automatically.
+  // Shareable demo link: profiler.html?demo loads the profile sample automatically.
+  // Reserve ?demo=compare for the two-dataset sample handled by profiler-compare.js.
   // Placed last so all declarations above (e.g. GRADE_COLOR) are initialized.
-  if (/(?:\?|&)demo\b/.test(window.location.search)) {
+  var demoMode = new URLSearchParams(window.location.search).get('demo');
+  if (demoMode !== null && demoMode !== 'compare') {
     runText(buildSampleCSV(), 'sample-health-data.csv');
   }
 })();

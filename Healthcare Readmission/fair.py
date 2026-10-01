@@ -158,8 +158,11 @@ features = [
     'num_lab_procedures',      # retained: diagnostic intensity this visit
     'num_procedures',          # retained: clinical procedures this visit
     'num_medications',         # retained: medication burden this visit
-    'number_outpatient',       # retained: outpatient visits (access to care signal,
-                               #           less racially stratified than inpatient)
+    'number_outpatient',       # retained: outpatient visits (access to care signal -
+                               #           its raw group-mean gap by race is actually
+                               #           larger than number_inpatient's, 0.161 vs
+                               #           0.044, so retained on clinical-relevance
+                               #           grounds, not because it's less stratified)
     'number_emergency',        # retained: emergency visits (acute events, not elective)
     'number_diagnoses',        # retained: comorbidity count - captures age signal
                                #           without the protected-class risk

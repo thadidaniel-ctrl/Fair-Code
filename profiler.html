@@ -175,8 +175,8 @@
         <p class="dropzone-title">Drop a CSV, TSV, JSON, or Excel file here, or <span class="link">browse</span></p>
         <p class="dropzone-hint" id="dropzoneHint">Comma- or tab-separated values with a header row, JSON
         (records or split orientation), or an .xlsx workbook (first sheet). (Parquet files: use
-        <code>faircode profile data.parquet</code> from the CLI.) Proxy-hint detection: use
-        <code>faircode profile/compare --proxy-hints</code> from the CLI.</p>
+        <code>faircode profile data.parquet</code> from the CLI.) Proxy-hint detection is available
+        below the results, or from the CLI with <code>faircode profile/compare --proxy-hints</code>.</p>
       </div>
     </section>
     <button class="sample-btn" id="sampleBtn" type="button">Try it with a sample dataset</button>
@@ -253,6 +253,14 @@
             <input type="number" class="threshold-input" id="minGroupSizeInput" data-opt="min_group_size"
                    step="1" min="1" placeholder="100" inputmode="numeric">
           </label>
+          <label>Max categorical cardinality (<code>--max-categorical-card</code>)
+            <input type="number" class="threshold-input" id="maxCategoricalCardInput" data-opt="max_categorical_card"
+                   step="1" min="2" placeholder="20" inputmode="numeric">
+          </label>
+          <label>Max dimension groups (<code>--max-dimension-groups</code>)
+            <input type="number" class="threshold-input" id="maxDimensionGroupsInput" data-opt="max_dimension_groups"
+                   step="1" min="1" placeholder="50" inputmode="numeric">
+          </label>
         </div>
       </details>
 
@@ -272,6 +280,17 @@
         </div>
         <p class="section-note" id="intersectionNote"></p>
         <div id="intersections"></div>
+      </div>
+
+      <div class="proxy-hints-block" id="proxyHintsBlock" hidden>
+        <h3 class="section-title">Proxy-hint detection</h3>
+        <p class="section-note">
+          Opt-in chi-squared check for column pairs strongly associated with each other - a
+          "this column may be a proxy for a protected attribute" signal. Informational only;
+          it never affects the score above.
+        </p>
+        <button type="button" class="proxy-hints-btn" id="proxyHintsBtn">Check for proxy columns</button>
+        <div id="proxyHintsResults"></div>
       </div>
     </section>
 
@@ -342,6 +361,14 @@
           <label>Min group size (<code>--min-group-size</code>)
             <input type="number" class="threshold-input" id="compareMinGroupSizeInput" data-opt="min_group_size"
                    step="1" min="1" placeholder="100" inputmode="numeric">
+          </label>
+          <label>Max categorical cardinality (<code>--max-categorical-card</code>)
+            <input type="number" class="threshold-input" id="compareMaxCategoricalCardInput" data-opt="max_categorical_card"
+                   step="1" min="2" placeholder="20" inputmode="numeric">
+          </label>
+          <label>Max dimension groups (<code>--max-dimension-groups</code>)
+            <input type="number" class="threshold-input" id="compareMaxDimensionGroupsInput" data-opt="max_dimension_groups"
+                   step="1" min="1" placeholder="50" inputmode="numeric">
           </label>
         </div>
       </details>

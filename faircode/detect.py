@@ -68,16 +68,19 @@ def classify_name(name: str) -> str | None:
     return None
 
 
-def detect_columns(df, overrides=None) -> list[dict]:
+def detect_columns(df, overrides=None, max_categorical_card: int = MAX_CATEGORICAL_CARD) -> list[dict]:
     """Detect demographic columns in a DataFrame.
 
     Returns a list of {"name": str, "kind": str} dicts. Keyword-matched columns
     are always kept; unmatched columns are kept as generic "categorical" only
-    when their distinct non-null value count is in [2, MAX_CATEGORICAL_CARD].
+    when their distinct non-null value count is in [2, max_categorical_card].
 
     `overrides` is an optional {column: kind} map that wins over auto-detection:
     a kind in VALID_KINDS forces that column to that dimension (regardless of its
     name); any other value (e.g. "ignore") drops the column from analysis.
+
+    `max_categorical_card` raises or lowers the generic-categorical cardinality
+    ceiling (SPEC section 7); defaults to MAX_CATEGORICAL_CARD.
     """
     overrides = overrides or {}
     detected: list[dict] = []
@@ -95,6 +98,6 @@ def detect_columns(df, overrides=None) -> list[dict]:
         # Generic categorical fallback for low-cardinality columns.
         series = df[col].dropna()
         n_unique = series.nunique()
-        if 2 <= n_unique <= MAX_CATEGORICAL_CARD:
+        if 2 <= n_unique <= max_categorical_card:
             detected.append({"name": col, "kind": "categorical"})
     return detected

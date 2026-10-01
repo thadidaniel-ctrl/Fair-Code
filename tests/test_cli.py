@@ -242,6 +242,94 @@ def test_profile_missing_file_exits_2_with_clean_error(tmp_path, capsys):
     assert f"error: file not found: {missing}" in captured.err
 
 
+def test_profile_csv_export_does_not_clobber_the_csv_dataset_argument(tmp_path, capsys):
+    """--csv (the export flag) and the positional `csv` dataset path argument
+    must not share an argparse dest - regression test for a real bug caught
+    while implementing #739: --csv silently overwrote args.csv, so the
+    dataset path used for reading (and for the provenance dataset_hash) was
+    replaced by the export path instead."""
+    path = tmp_path / "a.csv"
+    path.write_text("sex\nM\nF\nM\nF\n", encoding="utf-8")
+    out_path = tmp_path / "export.csv"
+
+    exit_code = main(["profile", str(path), "--csv", str(out_path), "--json"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert f"CSV export written to {out_path}" in captured.err
+    assert out_path.exists()
+    result = json.loads(captured.out)
+    assert result["n_rows"] == 4  # read from `path`, not misdirected to out_path
+
+
+def test_profile_csv_export_writes_a_flat_group_table(tmp_path, capsys):
+    path = tmp_path / "a.csv"
+    path.write_text("sex\nM\nF\nM\nF\n", encoding="utf-8")
+    out_path = tmp_path / "export.csv"
+
+    exit_code = main(["profile", str(path), "--csv", str(out_path)])
+
+    assert exit_code == 0
+    rows = out_path.read_text(encoding="utf-8").splitlines()
+    assert rows[0] == "dimension,kind,label,count,share,ci_low,ci_high,under_represented,small_group"
+    assert any(r.startswith("sex,sex,") for r in rows[1:])
+
+
+def test_compare_csv_export_writes_group_and_summary_sections(tmp_path, capsys):
+    path_a = tmp_path / "a.csv"
+    path_a.write_text("sex\nM\nF\nM\nF\n", encoding="utf-8")
+    path_b = tmp_path / "b.csv"
+    path_b.write_text("sex\nM\nM\nM\nF\n", encoding="utf-8")
+    out_path = tmp_path / "drift.csv"
+
+    exit_code = main(["compare", str(path_a), str(path_b), "--csv", str(out_path)])
+
+    assert exit_code == 0
+    text = out_path.read_text(encoding="utf-8")
+    assert "dimension,kind_a,kind_b,label,share_a,share_b,share_delta,status" in text
+    assert "dimension,kind_mismatch,dimension_score_a,dimension_score_b" in text
+
+
+def test_profile_csv_export_unwritable_path_returns_2_with_clean_error(tmp_path, capsys):
+    path = tmp_path / "a.csv"
+    path.write_text("sex\nM\nF\n", encoding="utf-8")
+
+    exit_code = main(["profile", str(path), "--csv", "/nonexistent-dir/out.csv"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "error: could not write CSV export to /nonexistent-dir/out.csv" in captured.err
+
+
+def test_profile_sample_runs_without_a_file_argument(capsys):
+    exit_code = main(["profile", "--sample", "--json"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    result = json.loads(captured.out)
+    assert result["provenance"]["dataset_hash"].startswith("sha256:")
+    assert any(d["name"] == "sex" for d in result["dimensions"])
+
+
+def test_profile_sample_and_csv_both_given_returns_2_with_clean_error(tmp_path, capsys):
+    path = tmp_path / "a.csv"
+    path.write_text("sex\nM\nF\n", encoding="utf-8")
+
+    exit_code = main(["profile", str(path), "--sample"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "pass either csv or --sample, not both" in captured.err
+
+
+def test_profile_without_csv_or_sample_returns_2_with_clean_error(capsys):
+    exit_code = main(["profile"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "profile needs a csv argument (or --sample)" in captured.err
+
+
 def test_profile_reads_csv_from_stdin(monkeypatch, capsys):
     monkeypatch.setattr("sys.stdin", io.StringIO("sex\nM\nF\nM\nF\n"))
 
@@ -560,6 +648,51 @@ def test_compare_proxy_hints_flags_a_real_proxy_in_both_datasets(tmp_path, capsy
     for key in ("proxy_hints_a", "proxy_hints_b"):
         pair = next(h for h in result[key] if {h["a"], h["b"]} == {"sex", "occupation"})
         assert pair["p_value"] < 0.05
+
+
+@requires_scipy
+def test_compare_proxy_hints_with_flags_a_dropped_column_in_each_dataset(tmp_path, capsys):
+    zip_code = (["111"] * 100 + ["222"] * 100)
+    race = (["A"] * 100 + ["B"] * 100)  # perfectly aligned with zip_code
+
+    path_a = tmp_path / "a.csv"
+    path_a.write_text("zip_code\n" + "\n".join(zip_code), encoding="utf-8")
+    held_a = tmp_path / "held_a.csv"
+    held_a.write_text("zip_code,race\n" +
+                      "\n".join(f"{z},{r}" for z, r in zip(zip_code, race)),
+                      encoding="utf-8")
+
+    path_b = tmp_path / "b.csv"
+    path_b.write_text("zip_code\n" + "\n".join(zip_code), encoding="utf-8")
+    held_b = tmp_path / "held_b.csv"
+    held_b.write_text("zip_code,race\n" +
+                      "\n".join(f"{z},{r}" for z, r in zip(zip_code, race)),
+                      encoding="utf-8")
+
+    exit_code = main(["compare", str(path_a), str(path_b), "--proxy-hints",
+                      "--proxy-hints-with-a", f"{held_a}=race",
+                      "--proxy-hints-with-b", f"{held_b}=race", "--json"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    result = json.loads(captured.out)
+    for key in ("proxy_hints_a", "proxy_hints_b"):
+        pair = next(h for h in result[key] if {h["a"], h["b"]} == {"zip_code", "race"})
+        assert pair["p_value"] < 0.05
+
+
+def test_compare_proxy_hints_with_a_without_proxy_hints_returns_2_with_clean_error(tmp_path, capsys):
+    path_a = tmp_path / "a.csv"
+    path_a.write_text("sex\nM\nF\n", encoding="utf-8")
+    path_b = tmp_path / "b.csv"
+    path_b.write_text("sex\nM\nF\n", encoding="utf-8")
+
+    exit_code = main(["compare", str(path_a), str(path_b),
+                      "--proxy-hints-with-a", "/nonexistent/file.csv=race"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "--proxy-hints-with-a/-b needs --proxy-hints" in captured.err
 
 
 def test_compare_proxy_hints_runtime_error_returns_2_with_clean_error(tmp_path, capsys, monkeypatch):

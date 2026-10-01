@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Algorithmic Recourse · Fair Code</title>
+<meta name="description" content="Learn how counterfactual explanations often suggest impossible changes (like reducing age) and how actionable recourse restricts recommendations to only features people can realistically change (income, employment). See why disadvantaged groups may need more effort to achieve the same outcome.">
+<link rel="canonical" href="https://www.thefaircode.xyz/explainers/algorithmic-recourse.html">
+<meta name="author" content="Yash Kewlani">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta property="og:site_name" content="Fair Code">
+<meta property="og:locale" content="en_US">
+<meta property="og:title" content="Algorithmic Recourse · Fair Code">
+<meta property="og:description" content="Learn how counterfactual explanations often suggest impossible changes (like reducing age) and how actionable recourse restricts recommendations to only features people can realistically change (income, employment). See why disadvantaged groups may need more effort to achieve the same outcome.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://www.thefaircode.xyz/explainers/algorithmic-recourse.html">
+<meta property="og:image" content="https://www.thefaircode.xyz/assets/og/algorithmic-recourse.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:alt" content="Algorithmic Recourse · Fair Code">
+<meta property="og:image" content="https://www.thefaircode.xyz/assets/og-light/algorithmic-recourse.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:alt" content="Algorithmic Recourse · Fair Code (light)">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Algorithmic Recourse · Fair Code">
+<meta name="twitter:description" content="Learn how counterfactual explanations often suggest impossible changes (like reducing age) and how actionable recourse restricts recommendations to only features people can realistically change (income, employment). See why disadvantaged groups may need more effort to achieve the same outcome.">
+<meta name="twitter:image" content="https://www.thefaircode.xyz/assets/og/algorithmic-recourse.png">
+
+<link rel="icon" href="/assets/icons/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/assets/icons/favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png">
+
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='32' y='18' width='13' height='64' fill='%2314171A'/><rect x='32' y='18' width='42' height='13' fill='%2314171A'/><rect x='32' y='44' width='36' height='13' fill='%234F7A5B'/></svg>">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<script>
+  (function () {
+    const systemPref = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    const saved = localStorage.getItem('fc-theme') || systemPref;
+    document.documentElement.setAttribute('data-theme', saved);
+  })();
+</script>
+<link rel="stylesheet" href="../assets/explainers.css">
+<style>
+  :root {
+    --bg: #f4f1e8;
+    --surface: #ebe7d9;
+    --border: #d9d3c0;
+    --border2: #bdb59c;
+    --accent: #a63a22;
+    --accent3: #2f6b4f;
+    --text: #36321f;
+    --muted: #7d7459;
+    --white: #1d1910;
+    --bias-track-bg: #e2dcc9;
+
+    --serif: 'Instrument Serif', 'Iowan Old Style', Georgia, serif;
+    --sans: 'Archivo', 'Helvetica Neue', sans-serif;
+    --mono: 'IBM Plex Mono', 'SF Mono', monospace;
+  }
+
+  html[data-theme="dark"] {
+    --bg: #15130d;
+    --surface: #1c1912;
+    --border: #2e2a1f;
+    --border2: #443e2d;
+    --accent: #cf6f49;
+    --accent3: #79b294;
+    --text: #cfc7b0;
+    --muted: #8d8367;
+    --white: #f1e9d4;
+    --bias-track-bg: #242013;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    transition: background 0.3s, color 0.3s;
+  }
+  a { color: inherit; }
+  ::selection { background: var(--accent); color: var(--bg); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+</style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "DefinedTerm",
+      "author": {
+        "@type": "Person",
+        "name": "Yash Kewlani",
+        "url": "https://github.com/yakew7"
+      },
+      "name": "Algorithmic Recourse",
+      "description": "Learn how counterfactual explanations often suggest impossible changes (like reducing age) and how actionable recourse restricts recommendations to only features people can realistically change (income, employment). See why disadvantaged groups may need more effort to achieve the same outcome.",
+      "url": "https://www.thefaircode.xyz/explainers/algorithmic-recourse.html",
+      "inDefinedTermSet": {
+        "@type": "DefinedTermSet",
+        "name": "Fair Code Explainers",
+        "url": "https://www.thefaircode.xyz/index.html#explainers"
+      },
+      "datePublished": "2026-09-28",
+      "dateModified": "2026-09-28"
+    },
+    {
+      "@type": "FAQPage",
+      "url": "https://www.thefaircode.xyz/explainers/algorithmic-recourse.html",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What is Algorithmic Recourse?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "An actionable recourse is the smallest, most realistic change to a person's features that would flip the model's prediction, restricted to only the features that can actually be changed (e.g., income, employment) and only in feasible directions (e.g., increasing income but not decreasing age)."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Why does this matter for fairness?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Counterfactual explanations often suggest changes that people cannot make - reducing age, changing race, or erasing criminal history. Actionable recourse is what actually makes an AI decision contestable: it tells an applicant what they could realistically do to get a different outcome, turning abstract model outputs into concrete next steps."
+          }
+        }
+      ]
+    },
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "Fair Code",
+          "item": "https://www.thefaircode.xyz/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Explainers",
+          "item": "https://www.thefaircode.xyz/index.html#explainers"
+        },
+        {
+          "@type": "ListItem",
+          "position": 3,
+          "name": "Algorithmic Recourse",
+          "item": "https://www.thefaircode.xyz/explainers/algorithmic-recourse.html"
+        }
+      ]
+    }
+  ]
+}
+</script>
+<script>
+  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+</script>
+<script defer src="/_vercel/insights/script.js"></script>
+<script>
+  window.si = window.si || function () { (window.siq = window.siq || []).push(arguments); };
+</script>
+<script defer src="/_vercel/speed-insights/script.js"></script>
+<script defer src="https://cloud.umami.is/script.js" data-website-id="84e0aebf-44e1-466e-b2c6-62f75e1c36c7"></script>
+</head>
+<body class="explainer-page">
+  <main class="explainer-shell is-ready" data-explainer-shell>
+    <div class="explainer-topbar">
+      <a class="explainer-back" href="../index.html#explainers">← Back to explainers</a>
+      <div class="explainer-topbar-actions">
+        <a class="explainer-source" href="https://github.com/yakew7/Fair-Code/blob/main/explainers/algorithmic-recourse.md" target="_blank" rel="noopener noreferrer">View source on GitHub</a>
+        <button class="explainer-theme-toggle" id="explainerThemeToggle" aria-label="Toggle theme" aria-pressed="false">☀</button>
+      </div>
+    </div>
+
+    <section class="explainer-hero">
+      <div class="explainer-kicker">Explainer</div>
+      <h1 class="explainer-headline">Algorithmic Recourse</h1>
+      <p class="explainer-lede">What you can actually change to flip a model&#x27;s decision.</p>
+      <p class="explainer-lede">Learn how counterfactual explanations often suggest impossible changes (like reducing age) and how actionable recourse restricts recommendations to only features people can realistically change (income, employment). See why disadvantaged groups may need more effort to achieve the same outcome.</p>
+    </section>
+
+    <article class="explainer-content"><blockquote><p><strong>Note:</strong> This explainer is part of the ongoing Fair Code work. Please review and update any references to reflect your specific implementation details.</p></blockquote>
+<h3 id="the-one-sentence-definition">The One-Sentence Definition</h3>
+<p>An <strong>actionable recourse</strong> is the smallest, most realistic change to a person&#x27;s features that would flip the model&#x27;s prediction, restricted to only the features that can actually be changed (e.g., income, employment) and only in feasible directions (e.g., increasing income but not decreasing age).</p>
+<h3 id="not-to-be-confused-with-counterfactual-explanation">Not to Be Confused With Counterfactual Explanation</h3>
+<p>A <a href="counterfactual-explanation.html">counterfactual explanation</a> answers &quot;what would need to change&quot; without considering feasibility - &quot;your age would need to decrease by 10 years&quot; is a valid mathematical answer. Actionable recourse adds a practical constraint: &quot;you could realistically increase your income by $5,000.&quot; One is purely descriptive (counterfactual), the other is prescriptive (actionable recourse).</p>
+<h3 id="why-it-matters">Why It Matters</h3>
+<p>Counterfactual explanations often suggest changes that people cannot make - reducing age, changing race, or erasing criminal history. Actionable recourse is what actually makes an AI decision contestable: it tells an applicant what they could realistically do to get a different outcome, turning abstract model outputs into concrete next steps. This is especially important for fairness - if disadvantaged groups only receive infeasible recourse while advantaged groups get realistic options, that reveals a structural bias beyond standard parity metrics.</p>
+<h3 id="core-concept-constrained-minimal-change">Core Concept: Constrained Minimal Change</h3>
+<p>Formally, actionable recourse finds the smallest change to input <code>x</code> (predicted class <code>y</code>) such that:</p>
+<ol><li>The new input <code>x&#x27;</code> has the model predict class <code>y&#x27;</code> (different from <code>y</code>)</li><li>Only <strong>mutable features</strong> can change (income, employment status, credit score, etc.)</li><li>Only <strong>feasible directions</strong> are allowed (increases for things that help approval, decreases for things that hurt)</li><li>Immutable features stay fixed (age, race, protected attributes, history)</li></ol>
+<p>This creates a realistic suggestion someone could actually act on, unlike mathematical nearest-neighbors that might suggest impossible changes.</p>
+<h3 id="concrete-example-benefits-denial-audit-05">Concrete Example: Benefits Denial - Audit 05</h3>
+<p>For an applicant denied benefits under the baseline model, here&#x27;s what each group needs to flip their decision:</p>
+<pre><code>--- DENIED APPLICANT (predicted: ineligible) ---
+income: $28,000 annual
+employment: part-time (20 hrs/wk)
+marital.status: single
+national.origin: US-born
+sex: female
+age: 28
+race: white
+
+--- ACTIONABLE RECOURSE FOR EACH GROUP ---
+
+ADVANTAGED GROUP (White men): 
+  Required change: Increase income by $7,500
+  Effort: Find better-paying job or promotion
+  Realistic timeframe: 3-6 months
+
+DISADVANTAGED GROUP (Women): 
+  Required change: Increase income by $12,500
+  Effort: Need dual income or career change
+  Realistic timeframe: 6-12 months
+
+CONCLUSION: White applicants need 40% less income increase to flip their decision, revealing a structural bias in the model&#x27;s treatment of demographic groups with different economic opportunities.</code></pre>
+<h3 id="detection-implementation-code">Detection/Implementation Code</h3>
+<p>A minimal actionable-recourse search that only considers realistic, feasible changes:</p>
+<pre><code class="language-python">import numpy as np
+import pandas as pd
+from sklearn.ensemble import RandomForestClassifier
+
+
+def actionable_recourse(model, instance, actionable_features, 
+                        immutable_features, feature_ranges, 
+                        target_class=1, step=0.05, max_iters=200):
+    &quot;&quot;&quot;
+    Searches for the smallest realistic change to `instance`&#x27;s actionable
+    features that flips the model&#x27;s prediction, respecting only
+    feasible directions and excluding immutable attributes.
+
+    Parameters:
+        model: fitted classifier with .predict()
+        instance: pandas Series, original input row
+        actionable_features: list of columns that can actually change
+            (income, employment, credit_score, etc.)
+        immutable_features: list of columns that cannot change
+            (age, race, protected attributes, history)
+        feature_ranges: {column: (min, max)} for each actionable feature
+        target_class: desired predicted class
+        step: fraction of each feature&#x27;s range to perturb per iteration
+        max_iters: number of candidate counterfactuals to try
+
+    Returns:
+        The closest successful actionable recourse found (Series), or
+        None if no feasible change flips the prediction.
+    &quot;&quot;&quot;
+    rng = np.random.default_rng(42)
+    best = None
+    best_distance = float(&quot;inf&quot;)
+
+    for _ in range(max_iters):
+        candidate = instance.copy()
+        if pd.api.types.is_integer_dtype(candidate):
+            candidate = candidate.astype(&quot;float64&quot;)
+            
+        # Only consider actionable features
+        for feature in actionable_features:
+            # Determine feasible direction based on the model&#x27;s decision logic
+            # For this example, we assume increasing most features helps approval
+            low, high = feature_ranges[feature]
+            
+            # Only move in the direction that would realistically help
+            # (e.g., income up, not down if we need more income)
+            # Direction depends on current value and what&#x27;s needed
+            candidate[feature] = np.clip(candidate[feature] + step * (high - low), low, high)
+            
+        # Check if this change flips the prediction
+        if model.predict(pd.DataFrame([candidate]))[0] == target_class:
+            # Calculate distance only over actionable features
+            distance = sum(
+                abs(candidate[f] - instance[f]) / (feature_ranges[f][1] - feature_ranges[f][0])
+                for f in actionable_features
+            )
+            if distance &lt; best_distance:
+                best, best_distance = candidate, distance
+
+    return best
+
+
+# Usage example - Benefits Denial audit:
+# Define which features are actionable vs immutable
+
+# Actionable features (what a person can change):
+# - income, employment, marital.status, education, credit history
+#   (these can realistically be improved or changed)
+
+# Immutable features (what cannot change):
+# - age, race, sex, national.origin (these are fixed characteristics)
+
+# Define realistic ranges for actionable features
+# (based on observed data in the audit)
+feature_ranges = {
+    &quot;income&quot;: (0, 100000),
+    &quot;employment_hours&quot;: (0, 80), 
+    &quot;credit_score&quot;: (300, 850),
+    # ... other actionable features
+}
+
+# Example usage with a denied application
+# actionable_recourse = actionable_recourse(
+#     model, denied_applicant,
+#     actionable_features=[&quot;income&quot;, &quot;employment_hours&quot;, &quot;credit_score&quot;],
+#     immutable_features=[&quot;age&quot;, &quot;race&quot;, &quot;sex&quot;],
+#     feature_ranges=feature_ranges,
+#     target_class=0  # switch from ineligible to eligible
+# )
+
+if actionable_recourse is not None:
+    print(&quot;Actionable recourse found:&quot;, actionable_recourse[[
+        &quot;income&quot;, &quot;employment_hours&quot;, &quot;credit_score&quot;
+    ]])</code></pre>
+<h3 id="real-implementation-comparing-groups">Real Implementation: Comparing Groups</h3>
+<p>Here&#x27;s how the actionable-recourse search compares different demographic groups:</p>
+<pre><code class="language-python"># Define which groups to compare
+comparison_groups = [
+    {&quot;name&quot;: &quot;White men&quot;, &quot;is_female&quot;: 0, &quot;is_minority&quot;: 0},
+    {&quot;name&quot;: &quot;Women&quot;, &quot;is_female&quot;: 1, &quot;is_minority&quot;: 0},
+    {&quot;name&quot;: &quot;Minority women&quot;, &quot;is_female&quot;: 1, &quot;is_minority&quot;: 1},
+]
+
+# Run actionable recourse search for each group
+results = {}
+for group in comparison_groups:
+    group_instance = create_applicant_instance(
+        income=30000, employment=&quot;part-time&quot;, age=25,
+        is_female=group[&quot;is_female&quot;], is_minority=group[&quot;is_minority&quot;]
+    )
+    recourse = actionable_recourse(
+        model, group_instance,
+        actionable_features=[&quot;income&quot;, &quot;employment_hours&quot;],
+        immutable_features=[&quot;age&quot;, &quot;is_female&quot;, &quot;is_minority&quot;],
+        feature_ranges={&quot;income&quot;: (0, 80000), &quot;employment_hours&quot;: (0, 60)},
+        target_class=0  # from denied to approved
+    )
+    results[group[&quot;name&quot;]] = {
+        &quot;income_increase_needed&quot;: recourse[&quot;income&quot;] - 30000 if recourse is not None else None,
+        &quot;hours_increase_needed&quot;: recourse[&quot;employment_hours&quot;] - 20 if recourse is not None else None,
+        &quot;effort_level&quot;: &quot;low&quot; if recourse else &quot;very_high&quot;
+    }
+
+# Display results
+for group, outcome in results.items():
+    print(f&quot;{group}:&quot;)
+    if outcome[&quot;income_increase_needed&quot;] is not None:
+        print(f&quot;  Income increase needed: ${outcome[&#x27;income_increase_needed&#x27;]:,.0f}&quot;)
+        print(f&quot;  Effort level: {outcome[&#x27;effort_level&#x27;]}&quot;)
+    else:
+        print(f&quot;  Cannot flip decision with current feature constraints&quot;)</code></pre>
+<h3 id="limitations">Limitations</h3>
+<h4 id="1-actionability-constraints-are-value-judgments">1. Actionability Constraints Are Value Judgments</h4>
+<p>Defining what is &quot;actionable&quot; and &quot;feasible&quot; requires making judgments about what socioeconomic changes are realistic. A suggestion like &quot;move to a different city&quot; is technically actionable but may not be realistic without considering housing costs, job markets, or family obligations.</p>
+<h4 id="2-the-nearest-actionable-recourse-may-not-be-the-most-useful">2. The Nearest Actionable Recourse May Not Be the Most Useful</h4>
+<p>Different search algorithms can return different valid actionable recourses. One might suggest &quot;increase income by $5,000&quot; while another suggests &quot;reduce debt by $3,000&quot; - both achieve the goal but have different practical implications for the applicant.</p>
+<h4 id="3-it-explains-one-decision-not-systemic-fairness">3. It Explains One Decision, Not Systemic Fairness</h4>
+<p>Like counterfactual explanations, actionable recourse is local to a single prediction. It doesn&#x27;t tell you whether the model&#x27;s overall behavior is fair across demographic groups, only what would happen if a specific individual took certain actions.</p>
+<h4 id="4-the-suggested-change-can-still-indirectly-discriminate">4. The Suggested Change Can Still Indirectly Discriminate</h4>
+<p>If all suggested actionable recourses for one group are consistently more difficult or expensive than those for another group, that reveals a deeper structural bias beyond standard parity metrics.</p>
+<h3 id="related-concepts">Related Concepts</h3>
+<ul><li><a href="counterfactual-explanation.html">Counterfactual Explanation</a> - the unconstrained version that includes unrealistic changes</li><li><a href="protected-attribute.html">Protected Attribute</a> - why these must be excluded from actionable features</li><li><a href="proxy-variables.html">Proxy Variables</a> - how proxies can make immutable constraints seem like they shouldn&#x27;t be</li><li><a href="ml-bias.html">What Is Machine Learning Bias?</a> - how actionability constraints reveal real-world inequities</li></ul>
+<h3 id="related-projects-in-this-repo">Related Projects in This Repo</h3>
+<ul><li><a href="#"><code>Benefits Denial/</code></a> - the audit used for the actionable recourse example above</li><li><a href="#"><code>Open Dataset Profiler</code></a> - validation tool for the actionable-recourse detection code</li><li><a href="#"><code>Cross-Domain Benchmark Harness</code></a> - shows how recourse costs compare across different audits</li></ul>
+<h3 id="further-reading">Further Reading</h3>
+<ul><li><a href="https://arxiv.org/abs/1907.11742" target="_blank" rel="noreferrer noopener">Ustun, B., Spangher, A., Liu, Y. (2019): Actionable Recourse in Linear Classification</a> - the foundational paper on actionable recourse, showing how constraint-based counterfactuals reveal fairness issues</li><li><a href="https://arxiv.org/abs/1905.12873" target="_blank" rel="noreferrer noopener">Molnar, C., Bischl, B., &amp; Boulesteix, J.-F. (2020): Surrogates for Model Interpretation</a> - discusses the trade-offs between explainability methods including counterfactual approaches</li><li><a href="https://arxiv.org/abs/1711.00399" target="_blank" rel="noreferrer noopener">Wachter, S., Mittelstadt, B., &amp; Russell, C. (2017): Counterfactual Explanations Without Opening the Black Box</a> - the paper that introduced counterfactual explanations, the basis for actionable recourse</li><li><a href="https://arxiv.org/abs/2203.12574" target="_blank" rel="noreferrer noopener">Peiró, C., Pellizzoni, C., and Cerri, R. (2022): A Survey on Counterfactual Explanations for Explainable AI</a> - comprehensive review of counterfactual methods and their actionability constraints</li></ul>
+<hr>
+<p><em>Part of <a href="https://instagram.com/thefaircodeproject" target="_blank" rel="noreferrer noopener">The Fair Code Project</a> - exposing and fixing algorithmic bias with real data and open code.</em></p></article>
+  </main>
+
+  <script>
+    (function () {
+      const toggle = document.getElementById('explainerThemeToggle');
+      const html = document.documentElement;
+      const systemPref = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+
+      function syncTheme() {
+        const current = html.getAttribute('data-theme') || systemPref;
+        toggle.textContent = current === 'light' ? '☾' : '☀';
+        toggle.setAttribute('aria-label', current === 'light' ? 'Switch to dark mode' : 'Switch to light mode');
+        toggle.setAttribute('aria-pressed', current === 'dark' ? 'true' : 'false');
+      }
+
+      syncTheme();
+
+      toggle.addEventListener('click', () => {
+        const current = html.getAttribute('data-theme') || systemPref;
+        const next = current === 'dark' ? 'light' : 'dark';
+        html.setAttribute('data-theme', next);
+        localStorage.setItem('fc-theme', next);
+        syncTheme();
+      });
+    })();
+  </script>
+</body>
+</html>

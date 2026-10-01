@@ -316,8 +316,9 @@ def test_python_js_public_params_parity_for_a_defaulted_run():
     )
     assert json.loads(completed.stdout) == expected
     assert set(expected) == {
-        "cross", "imbalance_flag", "intersection_floor", "min_group_size",
-        "min_share", "missing_flag", "reference_flag",
+        "cross", "imbalance_flag", "intersection_floor", "max_categorical_card",
+        "max_dimension_groups", "min_group_size", "min_share", "missing_flag",
+        "reference_flag",
     }
     assert "reference" not in expected
 
@@ -679,3 +680,156 @@ def test_threshold_input_recovers_panel_after_invalid_value():
     assert "currentOpts[opt] = previous;" in handler
     # ... and retry once so the #results panel (and this input) come back
     assert handler.count("reprofile(false)") >= 2
+
+
+def test_dim_card_renders_an_expand_control_past_display_groups():
+    """profiler-ui.js's dimCard() must render extra groups past DISPLAY_GROUPS
+    up front (hidden) with a toggle button, rather than the old static "...and
+    N more groups" text with no way to actually see them (#740). Source-level
+    check (mirrors test_threshold_input_recovers_panel_after_invalid_value) -
+    this is DOM-coupled and has no unit harness."""
+    src = (REPO_ROOT / "assets" / "profiler-ui.js").read_text(encoding="utf-8")
+
+    marker = "  function dimCard(d) {"
+    fn = src[src.index(marker):]
+    fn = fn[: fn.index("\n  function renderIntersections")]
+
+    assert "dim-extra-groups" in fn
+    assert 'aria-expanded="false"' in fn
+    assert "dim-more-btn" in fn
+    # the click handler must flip the hidden attribute and the aria state together
+    assert "extra.hidden = expanded" in fn
+    assert "btn.setAttribute('aria-expanded'" in fn
+    # the old dead-end text is gone
+    assert "… and " not in fn
+
+
+def test_drift_card_renders_an_expand_control_past_display_groups():
+    """assets/profiler-compare.js's driftCard() gets the same #740 treatment,
+    with a resultsEl-level delegated click handler (driftCard rebuilds via an
+    innerHTML string, not a DOM node dimCard() can attach a listener to
+    directly)."""
+    src = (REPO_ROOT / "assets" / "profiler-compare.js").read_text(encoding="utf-8")
+
+    card_fn_marker = "  function driftCard(cd) {"
+    card_fn = src[src.index(card_fn_marker):]
+    card_fn = card_fn[: card_fn.index("\n\n  // ── Report export")]
+    assert "dim-extra-groups" in card_fn
+    assert "dim-more-btn" in card_fn
+    assert "… and " not in card_fn
+
+    delegated_marker = "resultsEl.addEventListener('click'"
+    assert delegated_marker in src
+    handler = src[src.index(delegated_marker):]
+    handler = handler[: handler.index("\n  });")]
+    assert "closest" in handler
+    assert "extra.hidden = expanded" in handler
+
+
+def test_python_js_sample_dataset_is_byte_identical():
+    """faircode profile --sample (faircode/sample_data.py) and the web
+    profiler's "Try it with a sample dataset" button
+    (assets/profiler-ui.js's buildSampleCSV()) must produce the exact same
+    CSV text, so a first-time user sees an identical demo either way (#741)."""
+    from faircode.sample_data import build_sample_csv
+
+    src = (REPO_ROOT / "assets" / "profiler-ui.js").read_text(encoding="utf-8")
+    match = re.search(r"function buildSampleCSV\(\) \{[\s\S]*?\n  \}", src)
+    assert match, "could not find buildSampleCSV() in profiler-ui.js"
+
+    script = match.group(0) + ";process.stdout.write(buildSampleCSV());"
+    completed = subprocess.run(
+        ["node", "-e", script], capture_output=True, text=True, encoding="utf-8", check=True,
+    )
+    assert completed.stdout == build_sample_csv()
+
+
+def _run_js_proxy_hints(csv_path, alpha=0.05):
+    script = (
+        "require(process.argv[1]);"
+        "var fs=require('fs');"
+        "var table=globalThis.FairCodeProfiler.parseCSV(fs.readFileSync(process.argv[2],'utf-8'));"
+        "var r=globalThis.FairCodeProfiler.profile(table,{},{});"
+        "var hints=globalThis.FairCodeProfiler.proxyHints(table,r.dimensions,"
+        + repr(alpha) + ");"
+        "process.stdout.write(JSON.stringify(hints));"
+    )
+    completed = subprocess.run(
+        ["node", "-e", script, str(REPO_ROOT / "assets" / "profiler-engine.js"), str(csv_path)],
+        capture_output=True, text=True, encoding="utf-8", check=True,
+    )
+    return json.loads(completed.stdout)
+
+
+def test_python_js_proxy_hints_parity_on_a_correlated_pair(tmp_path):
+    """The web engine's proxyHints() (#738) is an opt-in, JS-only port of
+    faircode/proxy.py's proxy_hints() - not covered by profile()/compare()'s
+    bit-for-bit parity contract, but it should still agree with scipy's
+    chi2_contingency on the same data: this builds a sex/race pair with a
+    strong, deliberate correlation and checks both engines flag it with
+    matching chi2/Cramer's V and a p-value that agrees to several digits
+    (the two chi-squared CDF implementations differ past float precision)."""
+    pytest.importorskip("scipy")
+    from faircode.detect import detect_columns
+    from faircode.proxy import proxy_hints
+
+    rows = ["sex,race"]
+    for i in range(60):
+        sex = "male" if i % 2 == 0 else "female"
+        if sex == "male":
+            race = "White" if i % 5 != 0 else "Black"
+        else:
+            race = "White" if i % 4 == 0 else "Black"
+        rows.append(f"{sex},{race}")
+    csv = tmp_path / "proxy_pair.csv"
+    csv.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+    df = pd.read_csv(csv)
+    dims = [{"name": d["name"], "kind": d["kind"]} for d in detect_columns(df)]
+    python_hints = proxy_hints(df, dims, alpha=0.9)
+    js_hints = _run_js_proxy_hints(csv, alpha=0.9)
+
+    assert len(python_hints) == 1
+    assert len(js_hints) == 1
+    py_hint, js_hint = python_hints[0], js_hints[0]
+    assert (py_hint["a"], py_hint["b"]) == (js_hint["a"], js_hint["b"]) == ("sex", "race")
+    assert py_hint["chi2"] == js_hint["chi2"]
+    assert py_hint["cramers_v"] == js_hint["cramers_v"]
+    assert py_hint["p_value"] == pytest.approx(js_hint["p_value"], rel=1e-6)
+
+
+def test_python_js_proxy_hints_parity_finds_nothing_for_unrelated_columns(tmp_path):
+    """A column pair with no real association should not be flagged by either
+    engine - proxyHints()'s job is precision (avoid crying wolf), not recall."""
+    pytest.importorskip("scipy")
+    from faircode.detect import detect_columns
+    from faircode.proxy import proxy_hints
+
+    rows = ["sex,race"]
+    sexes = ["male", "female"]
+    races = ["White", "Black", "Asian"]
+    for i in range(90):
+        rows.append(f"{sexes[i % 2]},{races[i % 3]}")
+    csv = tmp_path / "proxy_unrelated.csv"
+    csv.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+    df = pd.read_csv(csv)
+    dims = [{"name": d["name"], "kind": d["kind"]} for d in detect_columns(df)]
+    assert proxy_hints(df, dims, alpha=0.05) == []
+    assert _run_js_proxy_hints(csv) == []
+
+
+def test_proxy_hints_ui_wiring_present_in_profiler_html_and_ui_js():
+    """Source-level check (like #740's dim/drift-card tests): the web results
+    view must expose the opt-in proxy-hints button/section wired up in
+    profiler-ui.js, and the dropzone hint text should no longer tell web
+    users the feature is CLI-only, now that it's available in-browser (#738)."""
+    html = (REPO_ROOT / "profiler.html").read_text(encoding="utf-8")
+    assert 'id="proxyHintsBlock"' in html
+    assert 'id="proxyHintsBtn"' in html
+    assert 'id="proxyHintsResults"' in html
+    assert "CLI.) Proxy-hint detection: use" not in html
+
+    ui = (REPO_ROOT / "assets" / "profiler-ui.js").read_text(encoding="utf-8")
+    assert "proxyHintsBtn.addEventListener('click', renderProxyHints)" in ui
+    assert "E.proxyHints(currentTable, currentResult.dimensions)" in ui

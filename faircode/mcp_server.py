@@ -134,13 +134,16 @@ def _check_overrides(overrides, known_columns):
 
 def _build_opts(min_share=None, intersection_floor=None, imbalance_flag=None,
                 missing_flag=None, min_group_size=None, cross=None,
-                reference_path=None):
+                reference_path=None, max_categorical_card=None,
+                max_dimension_groups=None):
     opts = {
         "min_share": min_share,
         "intersection_floor": intersection_floor,
         "imbalance_flag": imbalance_flag,
         "missing_flag": missing_flag,
         "min_group_size": min_group_size,
+        "max_categorical_card": max_categorical_card,
+        "max_dimension_groups": max_dimension_groups,
     }
     if cross:
         if len(cross) != 2 or not all(cross):
@@ -156,12 +159,14 @@ def _build_opts(min_share=None, intersection_floor=None, imbalance_flag=None,
 def _profile_dataset_impl(path, overrides=None, cross=None, reference_path=None,
                           min_share=None, intersection_floor=None,
                           imbalance_flag=None, missing_flag=None,
-                          min_group_size=None, include_provenance=True):
+                          min_group_size=None, include_provenance=True,
+                          max_categorical_card=None, max_dimension_groups=None):
     overrides = overrides or {}
     df = _read_table_or_raise(path)
     _check_overrides(overrides, df.columns)
     opts = _build_opts(min_share, intersection_floor, imbalance_flag,
-                       missing_flag, min_group_size, cross, reference_path)
+                       missing_flag, min_group_size, cross, reference_path,
+                       max_categorical_card, max_dimension_groups)
     result = profile(df, overrides, opts)
     note = _sheet_note(path)
     if note:
@@ -178,13 +183,16 @@ def _compare_datasets_impl(path_a, path_b, overrides=None,
                            min_share=None, intersection_floor=None,
                            imbalance_flag=None, missing_flag=None,
                            min_group_size=None, include_provenance=True,
-                           proxy_hints=False):
+                           proxy_hints=False, max_categorical_card=None,
+                           max_dimension_groups=None):
     overrides = overrides or {}
     df_a = _read_table_or_raise(path_a)
     df_b = _read_table_or_raise(path_b)
     _check_overrides(overrides, set(df_a.columns) | set(df_b.columns))
     opts = _build_opts(min_share, intersection_floor, imbalance_flag,
-                       missing_flag, min_group_size)
+                       missing_flag, min_group_size,
+                       max_categorical_card=max_categorical_card,
+                       max_dimension_groups=max_dimension_groups)
     profile_a = profile(df_a, overrides, opts)
     profile_b = profile(df_b, overrides, opts)
     result = compare(profile_a, profile_b, name_a=path_a, name_b=path_b)
@@ -376,7 +384,9 @@ def build_server():
                         imbalance_flag: float | None = None,
                         missing_flag: float | None = None,
                         min_group_size: int | None = None,
-                        include_provenance: bool = True) -> dict:
+                        include_provenance: bool = True,
+                        max_categorical_card: int | None = None,
+                        max_dimension_groups: int | None = None) -> dict:
         """Profile a tabular dataset (.csv/.tsv/.xlsx/.json/.parquet) for
         demographic representation: per-dimension imbalance/missing/skew,
         intersectional gaps, and an overall score/grade.
@@ -391,7 +401,9 @@ def build_server():
         `reference_path` scores against a reference baseline file (columns:
         column,group,share). The threshold args override the profiler's
         defaults (min_share=0.05, intersection_floor=0.01, imbalance_flag=3.0,
-        missing_flag=0.05, min_group_size=100) when set.
+        missing_flag=0.05, min_group_size=100, max_categorical_card=20,
+        max_dimension_groups=50) when set, matching the CLI's
+        --max-categorical-card/--max-dimension-groups.
 
         `include_provenance` (default true) attaches a provenance block -
         faircode version, a SHA-256 hash of the dataset file, and the resolved
@@ -402,7 +414,8 @@ def build_server():
             return _profile_dataset_impl(
                 path, overrides, cross, reference_path, min_share,
                 intersection_floor, imbalance_flag, missing_flag,
-                min_group_size, include_provenance)
+                min_group_size, include_provenance, max_categorical_card,
+                max_dimension_groups)
         except (ValueError, FileNotFoundError, RuntimeError) as exc:
             raise _as_tool_error(exc) from exc
 
@@ -415,7 +428,9 @@ def build_server():
                          missing_flag: float | None = None,
                          min_group_size: int | None = None,
                          include_provenance: bool = True,
-                         proxy_hints: bool = False) -> dict:
+                         proxy_hints: bool = False,
+                         max_categorical_card: int | None = None,
+                         max_dimension_groups: int | None = None) -> dict:
         """Compare two tabular datasets (e.g. a training set and a production
         snapshot) for representation drift: which dimensions/groups appeared,
         disappeared, or shifted share, plus a population-stability-index-based
@@ -437,7 +452,7 @@ def build_server():
             return _compare_datasets_impl(
                 path_a, path_b, overrides, min_share, intersection_floor,
                 imbalance_flag, missing_flag, min_group_size, include_provenance,
-                proxy_hints)
+                proxy_hints, max_categorical_card, max_dimension_groups)
         except (ValueError, FileNotFoundError, RuntimeError) as exc:
             raise _as_tool_error(exc) from exc
 

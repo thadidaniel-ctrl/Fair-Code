@@ -52,6 +52,26 @@ def test_sniff_delimiter_falls_back_to_comma_default():
     assert _sniff_delimiter("just one column\nno delimiter at all\n") == ","
 
 
+def test_sniff_delimiter_tolerates_one_messy_row_beyond_the_first_five():
+    """A stray unquoted delimiter in a free-text field, past the first 5 rows,
+    used to make csv.Sniffer() see an inconsistent sample and fall back to the
+    default - even though assets/profiler-engine.js's own sniffer (which only
+    checks the first 5 logical rows) picks the right delimiter every time.
+    See issue #729 - both engines must agree.
+    """
+    sample = (
+        "sex;race;age\n"
+        "M;White;25\n"
+        "F;Black;30\n"
+        "M;White;45\n"
+        "F;Asian;22\n"
+        "M;White;50\n"
+        "F;Black; recorded twice;29\n"
+        "M;Asian;33\n"
+    )
+    assert _sniff_delimiter(sample) == ";"
+
+
 # ── read_table by extension ──────────────────────────────────────────────────
 def test_read_table_tsv(tmp_path):
     path = tmp_path / "data.tsv"

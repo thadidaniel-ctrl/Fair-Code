@@ -109,6 +109,36 @@ def to_json(result: dict, indent: int = 2, provenance: dict | None = None) -> st
     return json.dumps(dict(result, provenance=provenance), indent=indent)
 
 
+def to_csv(result: dict) -> str:
+    """Flat CSV export of a profile result: one row per group per dimension,
+    every group included (not just the first DISPLAY_GROUPS shown in terminal/
+    HTML output), followed by a blank line and a single-column flags table.
+
+    Columns: dimension, kind, label, count, share, ci_low, ci_high,
+    under_represented, small_group - a row-per-group shape a spreadsheet or BI
+    tool can pivot directly, mirroring the CSV convention `faircode benchmark`
+    already uses for results_fairness.csv/results_performance.csv.
+    """
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([
+        "dimension", "kind", "label", "count", "share",
+        "ci_low", "ci_high", "under_represented", "small_group",
+    ])
+    for dim in result["dimensions"]:
+        under = set(dim["under_represented"])
+        for g in dim["groups"]:
+            writer.writerow([
+                dim["name"], dim["kind"], g["label"], g["count"], g["share"],
+                g["ci_low"], g["ci_high"], g["label"] in under, g["small_group"],
+            ])
+    writer.writerow([])
+    writer.writerow(["flag"])
+    for flag in result["flags"]:
+        writer.writerow([flag])
+    return buf.getvalue()
+
+
 def _bar(share: float, width: int = 24) -> str:
     filled = round(share * width)
     return "█" * filled + "·" * (width - filled)
@@ -291,6 +321,44 @@ def compare_to_terminal(cmp: dict) -> str:
 
     add("=" * WIDTH)
     return "\n".join(lines)
+
+
+def compare_to_csv(cmp: dict) -> str:
+    """Flat CSV export of a compare result: one row per group per dimension
+    (every group, not just the first DISPLAY_GROUPS), a per-dimension drift
+    summary section, and a flags section.
+
+    Group columns: dimension, kind_a, kind_b, label, share_a, share_b,
+    share_delta, status. A dimension whose comparison was skipped for a kind
+    mismatch (kind_mismatch: true) has no groups rows, only its summary row.
+    """
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([
+        "dimension", "kind_a", "kind_b", "label",
+        "share_a", "share_b", "share_delta", "status",
+    ])
+    for cd in cmp["dimensions"]:
+        for g in cd.get("groups", []):
+            writer.writerow([
+                cd["name"], cd["kind_a"], cd["kind_b"], g["label"],
+                g["share_a"], g["share_b"], g["share_delta"], g["status"],
+            ])
+    writer.writerow([])
+    writer.writerow([
+        "dimension", "kind_mismatch", "dimension_score_a", "dimension_score_b",
+        "dimension_score_delta", "psi", "tvd", "drift_level",
+    ])
+    for cd in cmp["dimensions"]:
+        writer.writerow([
+            cd["name"], cd["kind_mismatch"], cd["dimension_score_a"], cd["dimension_score_b"],
+            cd["dimension_score_delta"], cd.get("psi"), cd.get("tvd"), cd.get("drift_level"),
+        ])
+    writer.writerow([])
+    writer.writerow(["flag"])
+    for flag in cmp["flags"]:
+        writer.writerow([flag])
+    return buf.getvalue()
 
 
 def to_html(result: dict) -> str:

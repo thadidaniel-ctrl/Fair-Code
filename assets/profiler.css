@@ -233,7 +233,13 @@
 .bar-row.under .bar-label::after {
   content: ' ⚑'; color: var(--accent);
 }
-.dim-more { font-size: 12px; color: var(--muted); margin-top: 8px; font-style: italic; }
+.dim-extra-groups { margin-top: 2px; }
+.dim-more-btn {
+  display: block; margin-top: 8px; padding: 2px 0; border: none; background: none;
+  font-size: 12px; font-family: inherit; color: var(--accent3); cursor: pointer; text-decoration: underline;
+}
+.dim-more-btn:hover { color: var(--accent); }
+.dim-more-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ── Reference baseline (issue #56) ──────────────────── */
 .reference-status { font-family: var(--mono); font-size: 12px; color: var(--accent3); align-self: center; }
@@ -266,6 +272,22 @@
   border-radius: 5px; padding: 7px 11px; color: var(--text);
 }
 .inter-cell.empty { border-color: var(--accent); color: var(--accent); }
+
+/* ── Proxy-hint detection (issue #738) ───────────────── */
+.proxy-hints-block { margin-top: 20px; }
+.proxy-hints-btn {
+  font-family: var(--mono); font-size: 13px; background: var(--surface); color: var(--text);
+  border: 1px solid var(--border2); border-radius: 6px; padding: 8px 16px; cursor: pointer;
+}
+.proxy-hints-btn:hover { border-color: var(--accent); }
+.proxy-hint-list { margin-top: 12px; }
+.proxy-hint-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  font-size: 13px; padding: 8px 0; border-bottom: 1px solid var(--border);
+}
+.proxy-hint-row:last-child { border-bottom: none; }
+.proxy-hint-pair { color: var(--text); }
+.proxy-hint-stats { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
 
 /* ── Column mapping (manual override) ────────────────── */
 .mapping-block {

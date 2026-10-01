@@ -1,6 +1,6 @@
 # Fair Code
 
-> Fair Code exposes and fixes bias in real-world AI systems - criminal justice, hiring, lending, healthcare, welfare eligibility, tenant screening. Open-source audits with measurable results, up to 97% bias reduction.
+> Fair Code exposes and fixes bias in real-world AI systems - criminal justice, hiring, lending, healthcare, welfare eligibility, tenant screening. Open-source audits with measurable results, up to 96% bias reduction.
 
 Created and maintained by Yash Kewlani ([github.com/yakew7](https://github.com/yakew7)). Source: [github.com/yakew7/Fair-Code](https://github.com/yakew7/Fair-Code).
 
@@ -21,6 +21,7 @@ Full text of every explainer in one file (for AI answer engines): https://www.th
 ## Tools
 
 - [Open Dataset Profiler](https://www.thefaircode.xyz/profiler.html): Profiles any dataset for bias risk before modeling.
+- [Benchmark Results Dashboard](https://www.thefaircode.xyz/benchmark.html): Interactive explorer for the cross-domain benchmark harness's fairness and performance results.
 
 ## Explainers
 

@@ -204,6 +204,32 @@ def test_min_group_size_tunable():
 
     flags = result["flags"]
     assert not any("fairness metrics may be unreliable" in f for f in flags)
+
+
+def test_max_categorical_card_tunable():
+    # 30 distinct values - outside the default [2, 20] generic-categorical window.
+    df = pd.DataFrame({"occupation_code": [f"occ_{i % 30}" for i in range(300)]})
+
+    result = profile(df)
+    assert result["dimensions"] == []
+
+    result = profile(df, opts={"max_categorical_card": 30})
+    assert [d["name"] for d in result["dimensions"]] == ["occupation_code"]
+
+
+def test_max_dimension_groups_tunable():
+    # "ethnicity" keyword-matches the "race" kind directly (not the generic
+    # categorical fallback, so max_categorical_card doesn't apply), with 60
+    # distinct values - past the default 50-group identifier/date-like cutoff.
+    df = pd.DataFrame({"ethnicity": [f"group_{i % 60}" for i in range(600)]})
+
+    result = profile(df)
+    assert result["dimensions"] == []
+
+    result = profile(df, opts={"max_dimension_groups": 60})
+    assert [d["name"] for d in result["dimensions"]] == ["ethnicity"]
+
+
 def test_group_shares_carry_wilson_ci():
     from faircode.profiler import _r, _wilson
 
